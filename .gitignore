@@ -1,0 +1,25 @@
+# Virtual Environment
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Build Outputs & Binary Distributions
+dist/
+build/
+*.spec
+installer/output/
+
+# Logs & Database runtime files
+logs/
+data/
+*.db
+*.sqlite
+
+# Environment secrets
+.env
