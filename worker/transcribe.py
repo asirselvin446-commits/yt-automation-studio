@@ -14,12 +14,16 @@ GENAI = "https://generativelanguage.googleapis.com"
 _UPLOAD_TIMEOUT = None  # large files: no read timeout
 
 
-def upload_to_gemini(file_path: str, mime_type: str, display_name: str) -> str:
-    """Resumable-upload a media file; return its file resource name (files/xxx)."""
+def upload_to_gemini(file_path: str, mime_type: str, display_name: str, api_key: str = None) -> str:
+    """Resumable-upload a media file; return its file resource name (files/xxx).
+
+    Uploaded files are scoped to the key that uploaded them, so a caller that
+    rotates keys must re-upload with the new key.
+    """
     import os
 
     size = os.path.getsize(file_path)
-    key = config.GEMINI_API_KEY
+    key = api_key or config.GEMINI_API_KEY
 
     # 1. Start a resumable session.
     start = httpx.post(

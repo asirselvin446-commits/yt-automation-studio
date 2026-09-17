@@ -44,7 +44,29 @@ class WorkerConfig:
 
     # --- AI (Gemini: transcription + metadata) ---------------------------
     GEMINI_API_KEY = _get("GEMINI_API_KEY")
+    # Optional extra keys for rotation when one hits its quota/rate limit.
+    # Provide either GEMINI_API_KEYS="k1,k2,k3" or GEMINI_API_KEY_2, _3, _4...
+    GEMINI_API_KEYS = _get("GEMINI_API_KEYS")
     GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-flash-latest")
+
+    @classmethod
+    def gemini_keys(cls) -> list:
+        """All configured Gemini keys, in rotation order, de-duplicated."""
+        keys = []
+        if cls.GEMINI_API_KEY:
+            keys.append(cls.GEMINI_API_KEY)
+        if cls.GEMINI_API_KEYS:
+            keys += [k.strip() for k in cls.GEMINI_API_KEYS.split(",") if k.strip()]
+        for i in range(2, 8):
+            k = _get(f"GEMINI_API_KEY_{i}")
+            if k:
+                keys.append(k)
+        seen, ordered = set(), []
+        for k in keys:
+            if k not in seen:
+                seen.add(k)
+                ordered.append(k)
+        return ordered
 
     # --- YouTube upload defaults -----------------------------------------
     UPLOAD_PRIVACY_STATUS = _get("UPLOAD_PRIVACY_STATUS", "private")

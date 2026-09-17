@@ -26,32 +26,42 @@ def _model_chain() -> list:
     return chain
 
 
-def gemini_post(payload: Dict[str, Any], retries_per_model: int = 3) -> httpx.Response:
-    """POST generateContent, retrying transient 429/503 and falling back across
-    models so a single overloaded model doesn't stall the pipeline."""
+def gemini_post(payload: Dict[str, Any], api_key: str = None, retries_per_model: int = 2) -> httpx.Response:
+    """POST generateContent for one key, retrying transient 429/503 and falling
+    back across models. A persistent 429 means this key is quota-limited — the
+    caller rotates to the next key."""
+    key = api_key or config.GEMINI_API_KEY
     last = None
     for model in _model_chain():
-        url = f"{GENAI}/v1beta/models/{model}:generateContent?key={config.GEMINI_API_KEY}"
+        url = f"{GENAI}/v1beta/models/{model}:generateContent?key={key}"
         delay = 4.0
         for attempt in range(retries_per_model):
             last = httpx.post(url, json=payload, timeout=300.0)
             if last.status_code not in (429, 503):
                 return last  # success or a non-transient error — stop here
+            # 429 (quota) rarely clears fast — don't waste long retries on it.
+            if last.status_code == 429:
+                break
             if attempt < retries_per_model - 1:
                 time.sleep(delay)
                 delay = min(delay * 2, 30)
-        # this model stayed overloaded — try the next one
+        # overloaded or quota-limited on this model — try the next model
     return last
 
 
 def _call_json(prompt: str) -> Dict[str, Any]:
-    resp = gemini_post({
+    payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "systemInstruction": {"parts": [{"text": SYSTEM}]},
         "generationConfig": {"responseMimeType": "application/json"},
-    })
-    if resp.status_code != 200:
-        raise RuntimeError(f"Gemini error ({resp.status_code}): {resp.text}")
+    }
+    resp = None
+    for key in (config.gemini_keys() or [config.GEMINI_API_KEY]):
+        resp = gemini_post(payload, api_key=key)
+        if resp.status_code != 429:
+            break  # success or non-quota error — stop rotating
+    if resp is None or resp.status_code != 200:
+        raise RuntimeError(f"Gemini error ({getattr(resp,'status_code','?')}): {getattr(resp,'text','')}")
     raw = (
         resp.json()
         .get("candidates", [{}])[0]
@@ -73,7 +83,6 @@ def generate_from_video(file_path: str, mime_type: str, display_name: str,
     reasons over the visuals as well as any audio. Returns
     {title, description, tags[], summary}.
     """
-    file_uri = upload_to_gemini(file_path, mime_type or "video/mp4", display_name)
     prompt = """
 Watch this video and produce YouTube publishing metadata based on what actually
 happens in it (both the visuals and any speech or music). Respond with PURE JSON:
@@ -85,16 +94,26 @@ happens in it (both the visuals and any speech or music). Respond with PURE JSON
 }
 Do not invent facts that aren't supported by the video.
 """
-    resp = gemini_post({
-        "contents": [{"parts": [
-            {"file_data": {"mime_type": mime_type or "video/mp4", "file_uri": file_uri}},
-            {"text": prompt},
-        ]}],
-        "systemInstruction": {"parts": [{"text": SYSTEM}]},
-        "generationConfig": {"responseMimeType": "application/json"},
-    })
-    if resp.status_code != 200:
-        raise RuntimeError(f"Gemini video analysis error ({resp.status_code}): {resp.text}")
+    # Try each Gemini key in turn; a file is scoped to the key that uploaded it,
+    # so a key rotation re-uploads with the new key.
+    keys = config.gemini_keys() or [config.GEMINI_API_KEY]
+    resp = None
+    for i, key in enumerate(keys):
+        file_uri = upload_to_gemini(file_path, mime_type or "video/mp4", display_name, api_key=key)
+        resp = gemini_post({
+            "contents": [{"parts": [
+                {"file_data": {"mime_type": mime_type or "video/mp4", "file_uri": file_uri}},
+                {"text": prompt},
+            ]}],
+            "systemInstruction": {"parts": [{"text": SYSTEM}]},
+            "generationConfig": {"responseMimeType": "application/json"},
+        }, api_key=key)
+        if resp.status_code != 429:
+            break  # success or a non-quota error — no point rotating keys
+        if i < len(keys) - 1:
+            print(f"[ai] Gemini key #{i + 1} quota-limited; rotating to next key", flush=True)
+    if resp is None or resp.status_code != 200:
+        raise RuntimeError(f"Gemini video analysis error ({getattr(resp,'status_code','?')}): {getattr(resp,'text','')}")
     raw = (
         resp.json().get("candidates", [{}])[0]
         .get("content", {}).get("parts", [{}])[0].get("text", "{}")

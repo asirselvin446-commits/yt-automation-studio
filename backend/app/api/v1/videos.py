@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import security
-from app.models.schema import Video, VideoFile, Channel, TitleCandidate, ThumbnailRecord, UploadJob
+from app.models.schema import Video, VideoFile, Channel, TitleCandidate, ThumbnailRecord, UploadJob, MetadataGeneration
 from app.services.video_service import video_service
 from app.services.quality_check_service import quality_checker
 
@@ -22,6 +22,12 @@ async def list_videos(
     limit: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
+    try:
+        from app.services.supabase_sync import sync_all_from_cloud
+        await sync_all_from_cloud()
+    except Exception:
+        pass
+
     query = select(Video).options(selectinload(Video.file_info), selectinload(Video.thumbnails)).order_by(desc(Video.created_at))
     if status and status.upper() != "ALL":
         query = query.where(Video.status == status.upper())
@@ -151,18 +157,21 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{video_id}/approve")
 async def approve_video(video_id: str, db: AsyncSession = Depends(get_db)):
-    """Human approval transition: moves video to APPROVED state and folder."""
+    """Human approval transition: moves video to APPROVED state and folder, then triggers YouTube upload."""
+    import asyncio
+    from app.services.youtube_upload_service import start_upload_for_video
+
     q = await db.execute(select(Video).where(Video.id == video_id))
     video = q.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
     settings.ensure_directories()
-    filename = os.path.basename(video.current_folder_path)
+    filename = os.path.basename(video.current_folder_path) if video.current_folder_path else (video.original_filename or "video.mp4")
     dest_path = settings.approved_path / filename
 
     try:
-        if os.path.exists(video.current_folder_path) and Path(video.current_folder_path).resolve() != dest_path.resolve():
+        if video.current_folder_path and os.path.exists(video.current_folder_path) and Path(video.current_folder_path).resolve() != dest_path.resolve():
             shutil.move(video.current_folder_path, str(dest_path))
             video.current_folder_path = str(dest_path)
     except Exception as e:
@@ -177,9 +186,27 @@ async def approve_video(video_id: str, db: AsyncSession = Depends(get_db)):
         status="QUEUED"
     )
     db.add(upload_job)
-
     await db.commit()
-    return {"success": True, "status": "APPROVED", "message": "Video approved and queued for upload."}
+
+    # Launch background upload to YouTube
+    asyncio.create_task(start_upload_for_video(video.id))
+
+    return {"success": True, "status": "APPROVED", "message": "Video approved and background upload initiated."}
+
+
+@router.post("/{video_id}/upload")
+async def trigger_upload(video_id: str, db: AsyncSession = Depends(get_db)):
+    """Manually trigger or retry background YouTube upload for a video."""
+    import asyncio
+    from app.services.youtube_upload_service import start_upload_for_video
+
+    q = await db.execute(select(Video).where(Video.id == video_id))
+    video = q.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    asyncio.create_task(start_upload_for_video(video.id))
+    return {"success": True, "message": "YouTube upload started."}
 
 
 @router.post("/{video_id}/reject")
@@ -190,15 +217,16 @@ async def reject_video(video_id: str, reason: str = "Rejected by creator", db: A
         raise HTTPException(status_code=404, detail="Video not found")
 
     settings.ensure_directories()
-    filename = os.path.basename(video.current_folder_path)
-    dest_path = settings.failed_path / filename
-
-    try:
-        if os.path.exists(video.current_folder_path) and Path(video.current_folder_path).resolve() != dest_path.resolve():
-            shutil.move(video.current_folder_path, str(dest_path))
-            video.current_folder_path = str(dest_path)
-    except Exception as e:
-        pass
+    # Cloud-synced videos may have no local file; guard against None.
+    src = video.current_folder_path
+    if src:
+        try:
+            dest_path = settings.failed_path / os.path.basename(src)
+            if os.path.exists(src) and Path(src).resolve() != dest_path.resolve():
+                shutil.move(src, str(dest_path))
+                video.current_folder_path = str(dest_path)
+        except Exception:
+            pass
 
     video.status = "CANCELLED"
     video.notes = f"Rejected: {reason}"
@@ -208,13 +236,19 @@ async def reject_video(video_id: str, reason: str = "Rejected by creator", db: A
 
 @router.post("/{video_id}/select-title/{title_id}")
 async def select_title(video_id: str, title_id: str, db: AsyncSession = Depends(get_db)):
-    # Unselect all other titles for this video
+    v_q = await db.execute(select(Video).where(Video.id == video_id))
+    video = v_q.scalar_one_or_none()
+
     q = await db.execute(
-        select(TitleCandidate).join(Video.metadata_generations).where(Video.id == video_id)
+        select(TitleCandidate)
+        .join(MetadataGeneration, TitleCandidate.metadata_generation_id == MetadataGeneration.id)
+        .where(MetadataGeneration.video_id == video_id)
     )
     titles = q.scalars().all()
     for t in titles:
         t.is_selected = (t.id == title_id)
+        if t.is_selected and video:
+            video.title = t.title_text
     await db.commit()
     return {"success": True}
 
@@ -222,13 +256,30 @@ async def select_title(video_id: str, title_id: str, db: AsyncSession = Depends(
 @router.post("/manual-ingest")
 async def manual_ingest(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     """Allow manual video ingestion directly through Studio UI."""
-    settings.ensure_directories()
+    from pathlib import Path
+    from app.core import user_settings
+    from app.services import supabase_ingest_service
+
+    custom_folder = user_settings.get("custom_upload_folder")
     sanitized = security.sanitize_filename(file.filename or "uploaded_video.mp4")
-    dest = settings.inbox_path / sanitized
+
+    if custom_folder and os.path.isdir(custom_folder):
+        dest = Path(custom_folder) / sanitized
+    else:
+        settings.ensure_directories()
+        dest = settings.inbox_path / sanitized
+
     with open(dest, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    return {"success": True, "message": f"Saved to INBOX: {sanitized}", "path": str(dest)}
+    try:
+        supabase_ingest_service.run_once()
+        from app.services.supabase_sync import sync_all_from_cloud
+        await sync_all_from_cloud(force=True)
+    except Exception:
+        pass
+
+    return {"success": True, "message": f"Queued for cloud upload: {sanitized}", "path": str(dest)}
 
 
 @router.post("/internal-register")

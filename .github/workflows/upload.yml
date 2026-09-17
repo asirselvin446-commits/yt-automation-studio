@@ -43,6 +43,8 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional extra keys (comma-separated) rotated on quota limits:
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           WORKER_SECRET_KEY: ${{ secrets.WORKER_SECRET_KEY }}
           # Non-secret config (literals so they're never empty):
           STORAGE_BUCKET: raw-videos
