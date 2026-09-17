@@ -41,11 +41,20 @@ from store import store  # noqa: E402
 
 REDIRECT_PORT = 8765
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/"
-SCOPES = [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/yt-analytics.readonly",
-]
+
+# Google forbids Drive + YouTube scopes in a single consent, so each service is
+# authorized on its own and stored under its own credential id.
+SERVICE_SCOPES = {
+    "youtube": [
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/youtube.readonly",
+        "https://www.googleapis.com/auth/yt-analytics.readonly",
+    ],
+    # drive.file: the app only sees files it created — enough to upload the
+    # transient video and later download/delete it, with minimal scope.
+    "drive": ["https://www.googleapis.com/auth/drive.file"],
+}
+SERVICE_CRED_ID = {"youtube": "google", "drive": "drive"}
 
 _auth_code = {"code": None}
 
@@ -67,17 +76,27 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Authorize a Google service for the worker.")
+    parser.add_argument("--service", choices=["youtube", "drive"], default="youtube",
+                        help="Which grant to authorize (run once for each).")
+    args = parser.parse_args()
+    service = args.service
+    scopes = SERVICE_SCOPES[service]
+    cred_id = SERVICE_CRED_ID[service]
+
     missing = [k for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET") if not getattr(config, k)]
     if missing:
         print(f"Missing required env vars: {', '.join(missing)}")
         raise SystemExit(1)
 
+    print(f"Authorizing service: {service}")
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(
         {
             "client_id": config.GOOGLE_CLIENT_ID,
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
-            "scope": " ".join(SCOPES),
+            "scope": " ".join(scopes),
             "access_type": "offline",
             "prompt": "consent",
         }
@@ -110,28 +129,31 @@ def main():
               "https://myaccount.google.com/permissions and run this again.")
         raise SystemExit(1)
 
-    # Identify the channel this grant belongs to (nice to display later).
+    # For YouTube, identify the channel this grant belongs to (nice to display).
     channel_id = channel_title = None
-    try:
-        ch = httpx.get(
-            "https://www.googleapis.com/youtube/v3/channels",
-            params={"part": "snippet", "mine": "true"},
-            headers={"Authorization": f"Bearer {tokens['access_token']}"},
-            timeout=30.0,
-        ).json().get("items", [])
-        if ch:
-            channel_id = ch[0].get("id")
-            channel_title = ch[0].get("snippet", {}).get("title")
-    except Exception:
-        pass
+    if service == "youtube":
+        try:
+            ch = httpx.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                params={"part": "snippet", "mine": "true"},
+                headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                timeout=30.0,
+            ).json().get("items", [])
+            if ch:
+                channel_id = ch[0].get("id")
+                channel_title = ch[0].get("snippet", {}).get("title")
+        except Exception:
+            pass
 
     store.save_google_credentials(
         refresh_token_encrypted=encrypt(refresh_token),
-        scopes=SCOPES,
+        scopes=scopes,
         channel_id=channel_id,
         channel_title=channel_title,
+        cred_id=cred_id,
     )
-    print(f"\n[OK] Stored Google credentials in Supabase for channel: {channel_title or '(unknown)'}")
+    label = channel_title or service
+    print(f"\n[OK] Stored '{service}' Google credentials in Supabase ({label}).")
     print("The GitHub Actions uploader can now run without your laptop.")
 
 

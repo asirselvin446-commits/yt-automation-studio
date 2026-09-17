@@ -8,7 +8,9 @@ storage object. When an item is UPLOADED, we delete the local file too.
 This is the laptop-side half of the "laptop can be off" pipeline, integrated so
 the folder is chosen in the app instead of a .env file.
 """
+import base64
 import hashlib
+import json
 import mimetypes
 import os
 import threading
@@ -16,11 +18,15 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+import httpx
+from cryptography.fernet import Fernet
 from supabase import create_client, Client
 
 from app.core.config import settings
 from app.core import user_settings
 from app.core.logging import system_logger
+
+DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"
 
 VIDEO_EXTENSIONS = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv")
 _POLL_SECONDS = 30
@@ -56,13 +62,58 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def _ensure_bucket(db: Client) -> None:
-    try:
-        existing = {b.name for b in db.storage.list_buckets()}
-        if settings.STORAGE_BUCKET not in existing:
-            db.storage.create_bucket(settings.STORAGE_BUCKET, options={"public": False})
-    except Exception:
-        pass  # upload will surface any real problem
+def _drive_access_token(db: Client) -> str:
+    """Mint a Drive access token from the refresh token the worker stored."""
+    res = db.table("worker_credentials").select("*").eq("id", "drive").limit(1).execute()
+    rows = res.data or []
+    if not rows or not rows[0].get("refresh_token_encrypted"):
+        raise RuntimeError("No Drive credentials — run 'authorize.py --service drive' once.")
+    key_bytes = hashlib.sha256(settings.WORKER_SECRET_KEY.encode()).digest()
+    refresh_token = Fernet(base64.urlsafe_b64encode(key_bytes)).decrypt(
+        rows[0]["refresh_token_encrypted"].encode()
+    ).decode()
+    resp = httpx.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=30.0,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Drive token refresh failed ({resp.status_code}): {resp.text}")
+    return resp.json()["access_token"]
+
+
+def _drive_upload(token: str, local_path: str, name: str, mime: str) -> str:
+    """Resumable-upload a file to Drive; return the Drive file id."""
+    size = os.path.getsize(local_path)
+    init = httpx.post(
+        DRIVE_UPLOAD_URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Type": mime,
+            "X-Upload-Content-Length": str(size),
+        },
+        content=json.dumps({"name": name}),
+        timeout=60.0,
+    )
+    if init.status_code not in (200, 201):
+        raise RuntimeError(f"Drive session init failed ({init.status_code}): {init.text}")
+    session_url = init.headers["Location"]
+    with open(local_path, "rb") as f:
+        put = httpx.put(
+            session_url,
+            headers={"Content-Type": mime, "Content-Length": str(size)},
+            content=f.read(),
+            timeout=None,
+        )
+    if put.status_code not in (200, 201):
+        raise RuntimeError(f"Drive upload failed ({put.status_code}): {put.text}")
+    return put.json()["id"]
 
 
 def _cleanup_uploaded(db: Client) -> None:
@@ -88,29 +139,31 @@ def _cleanup_uploaded(db: Client) -> None:
 
 
 def _push_new(db: Client, folder: str) -> int:
-    queued = 0
+    # Only look up a Drive token if there's actually something new to upload.
+    pending = []
     for name in sorted(os.listdir(folder)):
         path = os.path.join(folder, name)
         if not (os.path.isfile(path) and name.lower().endswith(VIDEO_EXTENSIONS)):
             continue
-
         digest = _sha256(path)
         seen = db.table("ingest_items").select("id").eq("sha256", digest).limit(1).execute()
-        if seen.data:
-            continue
+        if not seen.data:
+            pending.append((name, path, digest))
 
-        storage_path = f"{digest[:12]}/{name}"
+    if not pending:
+        return 0
+
+    token = _drive_access_token(db)
+    queued = 0
+    for name, path, digest in pending:
         mime = mimetypes.guess_type(name)[0] or "video/mp4"
-        system_logger.info(f"Ingest: uploading {name} to Supabase Storage")
-        with open(path, "rb") as f:
-            db.storage.from_(settings.STORAGE_BUCKET).upload(
-                storage_path, f.read(), {"content-type": mime, "upsert": "true"}
-            )
+        system_logger.info(f"Ingest: uploading {name} to Google Drive")
+        file_id = _drive_upload(token, path, name, mime)
         db.table("ingest_items").insert(
             {
                 "file_name": name,
                 "local_path": path,
-                "storage_path": storage_path,
+                "storage_path": file_id,   # Drive file id
                 "mime_type": mime,
                 "size_bytes": os.path.getsize(path),
                 "sha256": digest,
@@ -145,7 +198,6 @@ def run_once() -> Dict[str, Any]:
         _status["last_error"] = "Supabase not configured"
         return _status
     try:
-        _ensure_bucket(db)
         _cleanup_uploaded(db)
         _push_new(db, folder)
         _refresh_counts(db)

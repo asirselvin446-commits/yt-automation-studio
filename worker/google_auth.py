@@ -1,12 +1,11 @@
-"""Exchange the stored refresh token for short-lived access tokens.
+"""Exchange stored refresh tokens for short-lived access tokens.
 
-The one-time authorize.py grants Drive + YouTube scopes and stores the refresh
-token (encrypted) in Supabase. Here the worker turns that into a fresh access
-token whenever it needs to call Drive or YouTube. Access tokens last ~1 hour, so
-we cache with a safety margin and refresh on demand.
+Google won't grant Drive and YouTube scopes in one consent, so there are two
+separate grants in Supabase: "google" (YouTube) and "drive" (Drive). This mints
+a valid access token for whichever service is asked, caching each with a margin.
 """
 import time
-from typing import Optional
+from typing import Dict
 
 import httpx
 
@@ -16,24 +15,28 @@ from store import store
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
-_cache = {"access_token": None, "expires_at": 0.0}
+# service name -> credential row id in worker_credentials
+_SERVICE_TO_ID = {"youtube": "google", "drive": "drive"}
+_cache: Dict[str, dict] = {}
 
 
-def get_access_token(force: bool = False) -> str:
-    """Return a valid Google access token, refreshing if needed.
+def get_access_token(service: str = "youtube", force: bool = False) -> str:
+    """Return a valid Google access token for the given service.
 
-    Raises RuntimeError if no credentials are stored (authorize.py not run yet)
-    or the refresh fails (revoked / expired grant).
+    service is "youtube" or "drive". Raises RuntimeError if that grant is
+    missing (authorize.py not run for it) or the refresh fails.
     """
+    cred_id = _SERVICE_TO_ID.get(service, service)
     now = time.time()
-    if not force and _cache["access_token"] and now < _cache["expires_at"] - 60:
-        return _cache["access_token"]
+    cache = _cache.setdefault(cred_id, {"access_token": None, "expires_at": 0.0})
+    if not force and cache["access_token"] and now < cache["expires_at"] - 60:
+        return cache["access_token"]
 
-    creds = store.get_google_credentials()
+    creds = store.get_google_credentials(cred_id)
     if not creds or not creds.get("refresh_token_encrypted"):
         raise RuntimeError(
-            "No Google credentials in Supabase. Run authorize.py once to grant "
-            "Drive + YouTube access."
+            f"No '{service}' Google credentials in Supabase. Run "
+            f"'python authorize.py --service {service}' once to grant access."
         )
 
     refresh_token = decrypt(creds["refresh_token_encrypted"])
@@ -54,6 +57,6 @@ def get_access_token(force: bool = False) -> str:
         raise RuntimeError(f"Google token refresh failed ({resp.status_code}): {resp.text}")
 
     data = resp.json()
-    _cache["access_token"] = data["access_token"]
-    _cache["expires_at"] = now + int(data.get("expires_in", 3600))
-    return _cache["access_token"]
+    cache["access_token"] = data["access_token"]
+    cache["expires_at"] = now + int(data.get("expires_in", 3600))
+    return cache["access_token"]

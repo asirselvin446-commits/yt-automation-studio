@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import config  # noqa: E402
 from store import store  # noqa: E402
-import storage  # noqa: E402
+import drive_store  # noqa: E402
 
 
 def _sha256(path: str) -> str:
@@ -100,14 +100,13 @@ def push_new() -> int:
         if store.get_item_by_sha(digest):
             continue  # already known (queued, uploading, uploaded, or failed)
 
-        storage_path = f"{digest[:12]}/{name}"
-        print(f"[push] uploading {name} to Supabase Storage ...", flush=True)
         mime = mimetypes.guess_type(name)[0] or "video/mp4"
-        storage.upload(path, storage_path, content_type=mime)
+        print(f"[push] uploading {name} to Google Drive ...", flush=True)
+        file_id = drive_store.upload(path, name, mime_type=mime)
         store.enqueue({
             "file_name": name,
             "local_path": path,
-            "storage_path": storage_path,
+            "storage_path": file_id,   # Drive file id (bytes live in Drive)
             "mime_type": mime,
             "size_bytes": os.path.getsize(path),
             "sha256": digest,

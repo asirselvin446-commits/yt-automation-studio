@@ -14,7 +14,7 @@ GENAI = "https://generativelanguage.googleapis.com"
 _UPLOAD_TIMEOUT = None  # large files: no read timeout
 
 
-def _upload_to_gemini(file_path: str, mime_type: str, display_name: str) -> str:
+def upload_to_gemini(file_path: str, mime_type: str, display_name: str) -> str:
     """Resumable-upload a media file; return its file resource name (files/xxx)."""
     import os
 
@@ -74,7 +74,7 @@ def _upload_to_gemini(file_path: str, mime_type: str, display_name: str) -> str:
 
 def transcribe(file_path: str, mime_type: str, display_name: str = "video") -> str:
     """Return a plain-text transcript of the video's spoken audio."""
-    file_uri = _upload_to_gemini(file_path, mime_type or "video/mp4", display_name)
+    file_uri = upload_to_gemini(file_path, mime_type or "video/mp4", display_name)
     key = config.GEMINI_API_KEY
     prompt = (
         "Transcribe all spoken words in this video verbatim as plain text. "

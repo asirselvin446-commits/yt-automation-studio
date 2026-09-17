@@ -23,10 +23,12 @@ class Store:
         )
 
     # --- credentials -----------------------------------------------------
-    def get_google_credentials(self) -> Optional[Dict[str, Any]]:
+    # Google forbids Drive + YouTube scopes in one consent, so we store two
+    # separate grants: id "google" (YouTube) and id "drive" (Drive).
+    def get_google_credentials(self, cred_id: str = "google") -> Optional[Dict[str, Any]]:
         res = (
             self.db.table("worker_credentials")
-            .select("*").eq("id", "google").limit(1).execute()
+            .select("*").eq("id", cred_id).limit(1).execute()
         )
         rows = res.data or []
         return rows[0] if rows else None
@@ -34,9 +36,10 @@ class Store:
     def save_google_credentials(
         self, refresh_token_encrypted: str, scopes: List[str],
         channel_id: Optional[str], channel_title: Optional[str],
+        cred_id: str = "google",
     ) -> None:
         self.db.table("worker_credentials").upsert({
-            "id": "google",
+            "id": cred_id,
             "refresh_token_encrypted": refresh_token_encrypted,
             "scopes": scopes,
             "youtube_channel_id": channel_id,

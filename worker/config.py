@@ -7,6 +7,25 @@ hard-coded and no secret is committed.
 import os
 
 
+def _load_dotenv() -> None:
+    """Load worker/.env or ../.env into the environment for local runs.
+
+    A no-op in GitHub Actions (no .env file there — values come from secrets).
+    Existing environment variables always win over the file.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(here, ".env"), os.path.join(here, "..", ".env")):
+        if os.path.exists(candidate):
+            for line in open(candidate, encoding="utf-8"):
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_dotenv()
+
+
 def _get(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
@@ -25,7 +44,7 @@ class WorkerConfig:
 
     # --- AI (Gemini: transcription + metadata) ---------------------------
     GEMINI_API_KEY = _get("GEMINI_API_KEY")
-    GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-1.5-flash")
+    GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-flash-latest")
 
     # --- YouTube upload defaults -----------------------------------------
     UPLOAD_PRIVACY_STATUS = _get("UPLOAD_PRIVACY_STATUS", "private")

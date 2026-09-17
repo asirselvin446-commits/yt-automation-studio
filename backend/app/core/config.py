@@ -68,8 +68,11 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     DATABASE_URL: str = "sqlite+aiosqlite:///./yt_automation.db"
 
-    # Supabase Storage bucket used to hand videos to the cloud uploader.
+    # Supabase Storage bucket (legacy; videos now go to Google Drive).
     STORAGE_BUCKET: str = "raw-videos"
+    # Shared key to decrypt the Drive/YouTube tokens stored by the worker.
+    # Must match worker's WORKER_SECRET_KEY.
+    WORKER_SECRET_KEY: str = "yt_studio_worker_default_key_change_me"
 
     # Google / YouTube OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
@@ -80,7 +83,7 @@ class Settings(BaseSettings):
     # AI Provider Settings
     DEFAULT_AI_PROVIDER: str = "gemini"  # gemini | openai | anthropic | local
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_MODEL: str = "gemini-flash-latest"
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o"
     ANTHROPIC_API_KEY: Optional[str] = None

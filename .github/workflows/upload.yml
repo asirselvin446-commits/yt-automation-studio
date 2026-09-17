@@ -46,7 +46,7 @@ jobs:
           WORKER_SECRET_KEY: ${{ secrets.WORKER_SECRET_KEY }}
           # Non-secret config (literals so they're never empty):
           STORAGE_BUCKET: raw-videos
-          GEMINI_MODEL: gemini-1.5-flash
+          GEMINI_MODEL: gemini-flash-latest
           UPLOAD_PRIVACY_STATUS: private
           UPLOAD_CATEGORY_ID: "22"
         run: python main.py
