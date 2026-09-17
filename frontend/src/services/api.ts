@@ -118,4 +118,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  setUploadFolder: (path: string) =>
+    fetchJson<{ success: boolean; custom_upload_folder: string; upload_status: any }>(
+      `${BASE_URL}/settings/upload-folder`,
+      { method: 'POST', body: JSON.stringify({ path }) },
+    ),
 };

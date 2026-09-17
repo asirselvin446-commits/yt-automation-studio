@@ -1,12 +1,45 @@
+import sys
 from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
+ROOT_DIR = Path(__file__).parent.parent.parent.resolve()
+
+
+def _candidate_env_files() -> tuple:
+    """Resolve .env locations across dev and PyInstaller-frozen runs.
+
+    In a frozen build the source tree does not sit next to config.py, so a
+    plain ``ROOT_DIR/.env`` misses the bundled ``backend/.env``. We also allow
+    an exe-adjacent ``.env`` so users can edit credentials without rebuilding.
+    pydantic-settings applies later files with higher priority, so the
+    user-editable exe-adjacent copy is listed last to win over bundled values.
+    """
+    files: List[Path] = []
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", "."))
+        exe_dir = Path(sys.executable).parent
+        files += [
+            meipass / "backend" / ".env",   # bundled baseline
+            exe_dir / "backend" / ".env",
+            exe_dir / ".env",               # user override next to the exe
+        ]
+    files += [ROOT_DIR / ".env", Path(".env")]
+    # De-duplicate while preserving order.
+    seen, ordered = set(), []
+    for f in files:
+        s = str(f)
+        if s not in seen:
+            seen.add(s)
+            ordered.append(s)
+    return tuple(ordered)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_candidate_env_files(),
         env_file_encoding="utf-8",
         extra="ignore"
     )
@@ -34,6 +67,9 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     DATABASE_URL: str = "sqlite+aiosqlite:///./yt_automation.db"
+
+    # Supabase Storage bucket used to hand videos to the cloud uploader.
+    STORAGE_BUCKET: str = "raw-videos"
 
     # Google / YouTube OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None

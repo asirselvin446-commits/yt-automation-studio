@@ -1,0 +1,50 @@
+name: YouTube Auto-Upload
+
+# Runs on GitHub's servers, so it works even when your laptop is off.
+on:
+  # Fired by push_local.py the moment a new video is queued (near-instant).
+  repository_dispatch:
+    types: [new-video]
+  # Polls for queued videos. Every 30 min keeps latency low while staying well
+  # within the free Actions minutes for a private repo (~1440 min/month).
+  schedule:
+    - cron: "*/30 * * * *"
+  # Manual "Run workflow" button.
+  workflow_dispatch:
+
+# Never run two uploads at once (avoids double-processing the same queue).
+concurrency:
+  group: youtube-upload
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: worker/requirements.txt
+
+      - name: Install dependencies
+        working-directory: worker
+        run: pip install -r requirements.txt
+
+      - name: Drain upload queue
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STORAGE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          WORKER_SECRET_KEY: ${{ secrets.WORKER_SECRET_KEY }}
+          UPLOAD_PRIVACY_STATUS: ${{ secrets.UPLOAD_PRIVACY_STATUS }}
+          UPLOAD_CATEGORY_ID: ${{ secrets.UPLOAD_CATEGORY_ID }}
+        run: python main.py

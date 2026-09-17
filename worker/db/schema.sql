@@ -1,0 +1,67 @@
+-- ============================================================================
+-- YT Automation Studio — Cloud Worker schema (Supabase / Postgres)
+-- Run this once in the Supabase SQL editor.
+--
+-- Flow: the laptop uploads each video to Supabase Storage and inserts a QUEUED
+-- row here; GitHub Actions uploads it to YouTube, then deletes the storage
+-- object; the laptop later deletes the local file. So Supabase only ever holds
+-- videos that are mid-flight, keeping storage usage near zero.
+-- ============================================================================
+
+-- Google OAuth credentials the worker acts with (YouTube upload).
+-- Populated once by authorize.py. The refresh token is Fernet-encrypted with a
+-- key derived from WORKER_SECRET_KEY, so the raw token never sits in the DB.
+create table if not exists worker_credentials (
+    id                       text primary key default 'google',
+    refresh_token_encrypted  text not null,
+    scopes                   text[] default '{}',
+    youtube_channel_id       text,
+    youtube_channel_title    text,
+    updated_at               timestamptz not null default now()
+);
+
+-- One row per video. Job queue + de-duplication ledger + cleanup bookkeeping.
+--   QUEUED -> PROCESSING -> UPLOADED   (happy path)
+--                        -> FAILED     (retryable up to max attempts)
+--                        -> SKIPPED    (duplicate content hash)
+create table if not exists ingest_items (
+    id                text primary key default gen_random_uuid()::text,
+    file_name         text not null,
+    -- where the bytes live at each stage
+    local_path        text,              -- path on the laptop it came from
+    storage_path      text,              -- object path in the Supabase Storage bucket
+    mime_type         text,
+    size_bytes        bigint default 0,
+    sha256            text unique,       -- content fingerprint => never process the same video twice
+    status            text not null default 'QUEUED',
+    attempts          int  not null default 0,
+    -- cleanup flags
+    storage_deleted   boolean not null default false,  -- object removed after YouTube upload
+    local_deleted     boolean not null default false,  -- laptop file removed after success
+    -- results
+    transcript        text,
+    ai_metadata       jsonb,
+    youtube_video_id  text,
+    youtube_url       text,
+    error             text,
+    created_at        timestamptz not null default now(),
+    updated_at        timestamptz not null default now()
+);
+
+create index if not exists ingest_items_status_idx on ingest_items (status);
+
+-- ============================================================================
+-- Row Level Security
+-- ----------------------------------------------------------------------------
+-- Enable RLS and add NO policies. With RLS on and no permissive policy, the
+-- anon and authenticated (browser) keys can read/write nothing — important
+-- because worker_credentials stores OAuth tokens. The worker uses the
+-- service-role key, which ALWAYS bypasses RLS, so it keeps full access.
+--
+-- If you later want the desktop app / a dashboard to read progress with the
+-- anon key, add a read-only policy, e.g.:
+--   create policy "read ingest" on ingest_items for select to authenticated using (true);
+-- Never add a policy that exposes worker_credentials.
+-- ============================================================================
+alter table worker_credentials enable row level security;
+alter table ingest_items       enable row level security;

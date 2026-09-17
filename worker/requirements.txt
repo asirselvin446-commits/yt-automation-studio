@@ -1,0 +1,5 @@
+# Cloud worker dependencies — deliberately minimal for fast, cheap Render builds.
+# Drive + YouTube + Gemini are all called over plain REST via httpx.
+httpx==0.27.2
+supabase==2.9.1
+cryptography==43.0.1

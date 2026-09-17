@@ -1,42 +1,87 @@
-# YT Automation Studio — Architecture & System Design
+# YT Automation Studio — Architecture
 
-## 1. Overview
-YT Automation Studio is a local-first desktop software application for Windows engineered to automate YouTube video ingestion, AI content analysis, metadata generation, and channel publishing with human-in-the-loop approval.
+## Overview
+
+YT Automation Studio is a **local-first**, **Windows-native** YouTube content automation and channel management platform. It runs as a standalone desktop application packaged via Inno Setup, with a bundled FastAPI backend, React frontend, and a Windows file watcher agent.
+
+## System Architecture
 
 ```
-[ Local Windows Inbox Folder ]
-             │ (Watchdog Observer)
-             ▼
-[ Windows Watcher Agent ] ──(FFmpeg & SHA-256)──> [ Technical Metadata ]
-             │
-             ▼ (FastAPI Internal API)
-[ Dual-Engine Database (Supabase PostgreSQL / Local SQLite) ]
-             │
-             ▼
-[ AI Provider Layer (Gemini, OpenAI, Anthropic, Local AI) ]
-             │
-             ├── 5 Title Candidates
-             ├── Structured Description with Chapters
-             ├── Primary, Secondary & Long-tail Tags
-             └── Thumbnail Concepts
-             │
-             ▼
-[ Quality Check Matrix & Human Approval Workstation ]
-             │ (Creator Approves)
-             ▼
-[ YouTube Upload Queue & Resumable Uploader ]
-             │
-             ▼
-[ Official YouTube Data & Analytics API Sync ]
-             │
-             ▼
-[ AI Channel Brain & Content Idea Lab ]
+┌─────────────────────────────────────────────────────────────────┐
+│                    Desktop Application (WebView2)                │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
+│  │  React Frontend  │  │  FastAPI Backend  │  │ Watcher Agent │  │
+│  │  (Vite + TS)     │  │  (Python 3.12)   │  │  (Watchdog)   │  │
+│  │  Port: embedded  │  │  Port: 8000      │  │  Background   │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └───────┬───────┘  │
+│           │  HTTP/REST API      │                     │          │
+│           └─────────────────────┘                     │          │
+│                      │                                │          │
+│           ┌──────────┴──────────┐          ┌─────────┴────────┐ │
+│           │   Local SQLite DB   │          │  INBOX Directory  │ │
+│           │   (Offline Mode)    │          │  (File Monitor)   │ │
+│           └──────────┬──────────┘          └──────────────────┘ │
+└──────────────────────┼──────────────────────────────────────────┘
+                       │ (When Online)
+              ┌────────┴────────┐
+              │  Supabase Cloud  │
+              │  (PostgreSQL)   │
+              └────────┬────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+   ┌─────┴─────┐ ┌────┴────┐ ┌─────┴──────┐
+   │  YouTube   │ │   AI    │ │  YouTube   │
+   │  Data API  │ │Providers│ │ Analytics  │
+   │   v3       │ │(4 opts) │ │    API     │
+   └───────────┘ └─────────┘ └────────────┘
 ```
 
-## 2. Monorepo Components
-- `desktop_app.py`: Desktop window shell powered by native Microsoft Edge WebView2 (`pywebview`). Boots the background server and watchdog agent silently without opening browser tabs or console windows.
-- `backend/`: FastAPI backend with SQLAlchemy async models, Pydantic schemas, security ciphers, and 10 domain routers.
-- `agent/`: Independent Windows background process running watchdog file monitoring, file stability verification, FFmpeg/FFprobe inspection, and SHA-256 hash calculation.
-- `frontend/`: React 18, TypeScript, Tailwind CSS, Lucide icons, and modern studio dark UI compiled into production bundle in `frontend/dist`.
-- `installer/`: Inno Setup compiler script (`yt_automation_studio.iss`) generating `YT-Automation-Studio-Setup.exe`.
-- `database/`: Supabase PostgreSQL migrations with 21 relational tables and RLS policies.
+## Component Breakdown
+
+### Frontend (`frontend/`)
+- **Framework**: React 18 + TypeScript + Vite
+- **Styling**: Tailwind CSS with dark-first design
+- **Icons**: Lucide React
+- **Routing**: React Router v6
+- **14 pages**: Dashboard, Inbox, Processing, Upload Queue, Videos, Video Detail, Calendar, Thumbnails, Ideas, Analytics, Channel Brain, Monetization, Automation, Settings
+
+### Backend (`backend/`)
+- **Framework**: FastAPI with async support
+- **ORM**: SQLAlchemy 2.0 (async) with dual-engine support (Supabase PostgreSQL + local SQLite)
+- **Validation**: Pydantic v2
+- **10 API route groups**: system, videos, youtube, analytics, brain, ideas, calendar, monetization, automation, settings
+- **AI Engine**: 4-provider abstraction (Gemini, OpenAI, Anthropic, Local/Ollama)
+- **YouTube Integration**: OAuth 2.0, Data API v3, resumable uploader, Analytics API
+
+### Agent (`agent/`)
+- **Watcher**: Watchdog file system observer monitoring INBOX for video files
+- **Stability Checker**: Polls file size to ensure copy completion before processing
+- **FFprobe Inspector**: Extracts video metadata (duration, resolution, codecs)
+- **SHA-256 Hasher**: Deduplication via content hashing
+- **Frame Extractor**: FFmpeg-based thumbnail candidate extraction
+- **Folder Manager**: Automated file movement across pipeline directories
+- **Offline Queue**: SQLite-backed resilience for offline operation
+
+### Desktop Shell (`desktop_app.py`)
+- **Window**: Native 1400×900 window via Microsoft Edge WebView2
+- **Embedded Server**: FastAPI runs in background daemon thread
+- **Embedded Agent**: Watchdog observer in background daemon thread
+- **Packaging**: PyInstaller → Inno Setup installer
+
+## Data Flow
+
+1. **Ingest**: Video dropped into INBOX → Watcher detects → Stability check → Move to PROCESSING
+2. **Inspect**: FFprobe extracts metadata → SHA-256 hash computed → Dedup check
+3. **AI Pipeline**: Transcript → Content analysis → 5 titles → Description → Tags → Thumbnail concepts
+4. **Approval**: Video moves to READY_FOR_APPROVAL → Human reviews in UI → Approve/Reject
+5. **Upload**: APPROVED → Resumable chunked upload to YouTube → UPLOADED
+6. **Analytics**: Periodic sync of YouTube Analytics data → Dashboard visualization
+
+## Security
+
+- OAuth tokens encrypted at rest via `cryptography.fernet`
+- API keys never exposed to frontend bundle
+- Row Level Security (RLS) on all Supabase tables
+- CORS restricted to localhost origins in production
+- SHA-256 file integrity verification

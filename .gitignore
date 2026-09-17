@@ -23,3 +23,6 @@ data/
 
 # Environment secrets
 .env
+
+# Runtime user settings (per-machine state, e.g. chosen upload folder)
+user_settings.json

@@ -1,42 +1,99 @@
-# YT Automation Studio — Database Schema & Architecture
+# YT Automation Studio — Database Schema
 
-## 1. Engine Decision: Supabase PostgreSQL
-YT Automation Studio uses **Supabase PostgreSQL** as its primary production relational database, with an automatic local fallback (SQLite via `aiosqlite`) for offline desktop execution.
+## Overview
 
-### Key Justifications
-1. **Relational Integrity & Versioned Metadata**: Content automation requires deep relations:
-   - `channels` -> `videos` -> `video_files` (technical media metadata & SHA-256 hash)
-   - `videos` -> `transcripts` -> `metadata_generations` (v1, v2...)
-   - `metadata_generations` -> `titles` (5 candidates), `descriptions`, `tags`, `thumbnails`
-   - `upload_jobs` -> `upload_attempts`
-2. **Channel Brain & Vector Search (`pgvector`)**:
-   Enables semantic vector embeddings over video transcripts, titles, and viewer questions.
-3. **Security & RLS (Row Level Security)**:
-   Every table is secured with RLS policies, ensuring OAuth refresh tokens and creator data cannot be accessed across workspaces.
+YT Automation Studio uses **Supabase PostgreSQL** as its primary database with a **local SQLite fallback** for offline/development operation. The schema contains **21 relational tables** covering the entire video automation lifecycle.
 
----
+## Schema Migration
 
-## 2. Table Catalog (21 Core Tables)
+The primary schema is defined in `database/migrations/001_initial_schema.sql`.
 
-1. `profiles`: Creator user accounts and workspace preferences.
-2. `channels`: Connected YouTube channels, title, statistics (subscribers, views, video count).
-3. `youtube_connections`: Encrypted OAuth 2.0 access & refresh tokens, scopes, expiry.
-4. `videos`: Master video records (`INBOX`, `PROCESSING`, `READY_FOR_APPROVAL`, `APPROVED`, `UPLOADING`, `UPLOADED`, `FAILED`, `CANCELLED`).
-5. `video_files`: Media inspection details (SHA-256 hash, size, duration, width, height, fps, codecs, audio presence).
-6. `video_analysis`: AI content summary, topics, keywords, entities, target audience, content category.
-7. `transcripts`: Timestamped audio transcription segments.
-8. `metadata_generations`: Versioned generations (`v1`, `v2`...) tracking tokens, cost, and provider.
-9. `titles`: 5 candidate titles per generation with reasoning, estimated intent, and selection status.
-10. `descriptions`: Short description, long description, CTA, links, hashtags, and chapter markers.
-11. `tags`: Primary, secondary, and long-tail YouTube tags.
-12. `thumbnails`: Visual layout concepts, text overlay suggestions, and preview URLs.
-13. `upload_jobs`: YouTube upload queue entries, privacy status, playlist assignment, retry count.
-14. `upload_attempts`: Granular attempt telemetry and error logs.
-15. `analytics_snapshots`: Time-series channel and video metrics (views, watch time, subscribers).
-16. `channel_insights`: Channel Brain synthesis separating data from interpretation and suggestions.
-17. `content_ideas`: 10-idea lab entries with hook, structure, and difficulty.
-18. `content_calendar`: Scheduled publishing events.
-19. `automation_settings`: Feature toggles (folder monitoring, AI analysis, approval required, auto upload).
-20. `notifications`: In-app notifications with severity ratings and deep links.
-21. `audit_logs`: Immutable audit trails of all system, AI, and file actions.
-22. `jobs`: General background job execution queue.
+### Applying to Supabase
+```sql
+-- Run via Supabase SQL Editor or psql
+\i database/migrations/001_initial_schema.sql
+```
+
+### Seed Data
+```sql
+\i database/seed/seed_data.sql
+```
+
+## Entity Relationship Diagram
+
+```
+users ──┐
+        ├── profiles
+        ├── channels ── youtube_connections
+        │       │
+        │       ├── videos ──┬── video_files
+        │       │            ├── video_analysis
+        │       │            ├── transcripts
+        │       │            ├── metadata_generations ──┬── titles
+        │       │            │                         ├── descriptions  
+        │       │            │                         └── tags
+        │       │            ├── thumbnails
+        │       │            ├── upload_jobs ── upload_attempts
+        │       │            └── content_calendar
+        │       │
+        │       ├── analytics_snapshots
+        │       └── channel_insights
+        │
+        ├── content_ideas
+        ├── automation_settings
+        ├── notifications
+        └── audit_logs
+```
+
+## Table Reference
+
+| Table | Purpose | Key Columns |
+|:---|:---|:---|
+| `users` | User accounts | id, email, created_at |
+| `profiles` | Workspace preferences | user_id, display_name, theme |
+| `channels` | YouTube channels | id, user_id, channel_id, title, subscriber_count |
+| `youtube_connections` | Encrypted OAuth tokens | channel_id, access_token, refresh_token, token_expiry |
+| `videos` | Master video record | id, title, status, publishing_mode, quality_status |
+| `video_files` | File metadata | video_id, file_path, sha256_hash, duration, resolution |
+| `video_analysis` | AI content analysis | video_id, transcript, topics, keywords, category |
+| `transcripts` | Timestamped segments | video_id, start_time, end_time, text, confidence |
+| `metadata_generations` | Versioned AI outputs | video_id, version, provider, tokens_used, cost |
+| `titles` | Title candidates | generation_id, text, reasoning, is_selected |
+| `descriptions` | Generated descriptions | generation_id, short, long, chapters, cta |
+| `tags` | SEO tags | generation_id, primary, secondary, long_tail |
+| `thumbnails` | Thumbnail concepts | video_id, concept, text_overlay, local_path |
+| `upload_jobs` | Upload queue entries | video_id, channel_id, privacy_status, progress |
+| `upload_attempts` | Granular upload logs | job_id, bytes_uploaded, error, timestamp |
+| `analytics_snapshots` | Daily channel/video stats | channel_id, date, views, likes, watch_time |
+| `channel_insights` | AI-generated insights | channel_id, content_type, insight_text |
+| `content_ideas` | Idea lab storage | title, hook, structure, difficulty, status |
+| `content_calendar` | Scheduling entries | video_id, scheduled_datetime, notes |
+| `automation_settings` | Feature toggles | feature_name, is_enabled, value |
+| `notifications` | In-app alerts | title, message, severity, is_read |
+| `audit_logs` | Immutable action log | action, category, entity_type, entity_id |
+
+## Video Status Lifecycle
+
+```
+INBOX → PROCESSING → READY_FOR_APPROVAL → APPROVED → UPLOADING → UPLOADED
+                                        ↘ REJECTED
+                            PROCESSING → FAILED
+                            UPLOADING  → FAILED
+```
+
+## Indexes
+
+Performance-critical indexes are created on:
+- `videos(status)` — Status-based filtering
+- `videos(channel_id, created_at)` — Channel video listing
+- `video_files(sha256_hash)` — Duplicate detection
+- `upload_jobs(status)` — Queue processing
+- `analytics_snapshots(channel_id, snapshot_date)` — Time-series queries
+- `audit_logs(created_at)` — Recent activity
+
+## Row Level Security (RLS)
+
+All tables in the `public` schema have RLS enabled. Policies enforce:
+- Users can only access their own data via `auth.uid() = user_id`
+- Service role bypasses RLS for backend operations
+- `audit_logs` are insert-only (no updates or deletes)
