@@ -96,7 +96,8 @@ class WorkerConfig:
             "SUPABASE_SERVICE_ROLE_KEY": cls.SUPABASE_SERVICE_ROLE_KEY,
             "GOOGLE_CLIENT_ID": cls.GOOGLE_CLIENT_ID,
             "GOOGLE_CLIENT_SECRET": cls.GOOGLE_CLIENT_SECRET,
-            "GEMINI_API_KEY": cls.GEMINI_API_KEY,
+            # At least one Gemini key, from GEMINI_API_KEY or GEMINI_API_KEYS.
+            "GEMINI_API_KEY": cls.gemini_keys()[0] if cls.gemini_keys() else "",
         }
         return [k for k, v in required.items() if not v]
 
