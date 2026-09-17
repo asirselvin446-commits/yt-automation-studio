@@ -37,14 +37,16 @@ jobs:
       - name: Drain upload queue
         working-directory: worker
         env:
+          # Secrets (set with `gh secret set` / repo Settings → Secrets):
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          STORAGE_BUCKET: ${{ secrets.STORAGE_BUCKET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
           WORKER_SECRET_KEY: ${{ secrets.WORKER_SECRET_KEY }}
-          UPLOAD_PRIVACY_STATUS: ${{ secrets.UPLOAD_PRIVACY_STATUS }}
-          UPLOAD_CATEGORY_ID: ${{ secrets.UPLOAD_CATEGORY_ID }}
+          # Non-secret config (literals so they're never empty):
+          STORAGE_BUCKET: raw-videos
+          GEMINI_MODEL: gemini-1.5-flash
+          UPLOAD_PRIVACY_STATUS: private
+          UPLOAD_CATEGORY_ID: "22"
         run: python main.py
