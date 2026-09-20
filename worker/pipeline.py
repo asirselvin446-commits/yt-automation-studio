@@ -37,10 +37,16 @@ def process_item(item: dict) -> None:
 
         # 4. Upload to YouTube.
         print(f"[{item_id}] uploading to YouTube ...", flush=True)
+        # Per-video visibility + scheduled publishing (set by the app at push time).
+        visibility = (item.get("visibility") or config.UPLOAD_PRIVACY_STATUS or "public")
+        publish_at = item.get("publish_at")
+        if publish_at:
+            print(f"[{item_id}] scheduling public release at {publish_at}", flush=True)
         result = youtube.upload_video(
             work_path,
             title=meta["title"], description=meta["description"], tags=meta["tags"],
-            privacy_status=config.UPLOAD_PRIVACY_STATUS, category_id=config.UPLOAD_CATEGORY_ID,
+            privacy_status=visibility, category_id=config.UPLOAD_CATEGORY_ID,
+            publish_at=publish_at,
         )
 
         # 5. YouTube has it — delete the raw video from Drive.

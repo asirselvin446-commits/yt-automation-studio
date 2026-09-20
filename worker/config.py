@@ -69,7 +69,7 @@ class WorkerConfig:
         return ordered
 
     # --- YouTube upload defaults -----------------------------------------
-    UPLOAD_PRIVACY_STATUS = _get("UPLOAD_PRIVACY_STATUS", "private")
+    UPLOAD_PRIVACY_STATUS = _get("UPLOAD_PRIVACY_STATUS", "public")
     UPLOAD_CATEGORY_ID = _get("UPLOAD_CATEGORY_ID", "22")  # People & Blogs
 
     # --- Laptop-side push (push_local.py) --------------------------------

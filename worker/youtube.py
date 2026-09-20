@@ -40,10 +40,23 @@ def upload_video(
     tags: List[str],
     privacy_status: str = "private",
     category_id: str = "22",
+    publish_at: str = None,
 ) -> Dict[str, Any]:
-    """Upload one video. Returns {video_id, url} or raises on failure."""
+    """Upload one video. Returns {video_id, url} or raises on failure.
+
+    If publish_at (RFC3339 UTC) is given, the video is uploaded private and
+    YouTube automatically makes it PUBLIC at that time (native scheduling).
+    """
     token = get_access_token()
     file_size = os.path.getsize(file_path)
+
+    status: Dict[str, Any] = {"selfDeclaredMadeForKids": False}
+    if publish_at:
+        # Scheduled publishing requires privacyStatus=private + publishAt.
+        status["privacyStatus"] = "private"
+        status["publishAt"] = publish_at
+    else:
+        status["privacyStatus"] = privacy_status
 
     metadata = {
         "snippet": {
@@ -52,10 +65,7 @@ def upload_video(
             "tags": tags[:50],
             "categoryId": category_id,
         },
-        "status": {
-            "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": False,
-        },
+        "status": status,
     }
 
     # 1. Open a resumable session.

@@ -15,7 +15,7 @@ import mimetypes
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 import httpx
@@ -39,6 +39,7 @@ _status: Dict[str, Any] = {
     "queued": 0,
     "uploaded": 0,
     "failed": 0,
+    "held": 0,
 }
 _started = False
 _lock = threading.Lock()
@@ -153,27 +154,191 @@ def _push_new(db: Client, folder: str) -> int:
     if not pending:
         return 0
 
+    # Publish mode decides the initial state:
+    #   "auto"   -> QUEUED: the cloud worker uploads it straight away.
+    #   "review" -> HELD:   it waits until you release it for publishing.
+    mode = (user_settings.get("publish_mode", "auto") or "auto").lower()
+    initial_status = "HELD" if mode == "review" else "QUEUED"
+
+    # Visibility + drip schedule.
+    visibility = (user_settings.get("visibility", "public") or "public").lower()
+    if visibility not in ("public", "unlisted", "private"):
+        visibility = "public"
+    per_day = int(user_settings.get("schedule_per_day", 0) or 0)
+    scheduled = per_day > 0
+    interval = timedelta(hours=24.0 / per_day) if scheduled else None
+    # Chain new videos after anything already scheduled in the future.
+    cursor = _latest_future_publish_at(db) if scheduled else None
+
     token = _drive_access_token(db)
     queued = 0
     for name, path, digest in pending:
         mime = mimetypes.guess_type(name)[0] or "video/mp4"
-        system_logger.info(f"Ingest: uploading {name} to Google Drive")
+        system_logger.info(f"Ingest: uploading {name} to Google Drive ({initial_status})")
         file_id = _drive_upload(token, path, name, mime)
-        db.table("ingest_items").insert(
-            {
-                "file_name": name,
-                "local_path": path,
-                "storage_path": file_id,   # Drive file id
-                "mime_type": mime,
-                "size_bytes": os.path.getsize(path),
-                "sha256": digest,
-                "status": "QUEUED",
-                "created_at": _now(),
-                "updated_at": _now(),
-            }
-        ).execute()
+        row = {
+            "file_name": name,
+            "local_path": path,
+            "storage_path": file_id,   # Drive file id
+            "mime_type": mime,
+            "size_bytes": os.path.getsize(path),
+            "sha256": digest,
+            "status": initial_status,
+            "visibility": visibility,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        if scheduled:
+            base = cursor if cursor else (datetime.now(timezone.utc) + timedelta(minutes=30) - interval)
+            cursor = base + interval
+            min_future = datetime.now(timezone.utc) + timedelta(minutes=20)
+            if cursor < min_future:
+                cursor = min_future
+            row["publish_at"] = cursor.isoformat()
+        _insert_item(db, row)
         queued += 1
     return queued
+
+
+def _latest_future_publish_at(db: Client):
+    """The furthest-out scheduled publish time, so new videos chain after it."""
+    now = datetime.now(timezone.utc)
+    try:
+        rows = db.table("ingest_items").select("publish_at").execute().data or []
+    except Exception:
+        return None
+    latest = None
+    for r in rows:
+        pa = r.get("publish_at")
+        if not pa:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(pa).replace("Z", "+00:00"))
+            if dt > now and (latest is None or dt > latest):
+                latest = dt
+        except Exception:
+            pass
+    return latest
+
+
+def _insert_item(db: Client, row: Dict[str, Any]) -> None:
+    """Insert an ingest row, tolerating older tables without the new columns."""
+    try:
+        db.table("ingest_items").insert(row).execute()
+    except Exception as e:
+        msg = str(e)
+        if "visibility" in msg or "publish_at" in msg:
+            slim = {k: v for k, v in row.items() if k not in ("visibility", "publish_at")}
+            db.table("ingest_items").insert(slim).execute()
+            system_logger.warning(
+                "ingest_items is missing visibility/publish_at columns — run the ALTER "
+                "in worker/db/schema.sql to enable scheduling & visibility."
+            )
+        else:
+            raise
+
+
+def list_held() -> list:
+    """Videos held for review (Review mode), not yet released to the cloud."""
+    db = _client()
+    if db is None:
+        return []
+    try:
+        res = (
+            db.table("ingest_items")
+            .select("id,file_name,created_at")
+            .eq("status", "HELD")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+
+def list_items(limit: int = 100) -> Dict[str, Any]:
+    """The live cloud pipeline: every ingested video with its current stage.
+
+    Reads Supabase (the source of truth the GitHub Actions worker writes to), so
+    the app shows exactly what's happening whether the upload ran here or in the
+    cloud while the laptop was off.
+    """
+    db = _client()
+    if db is None:
+        return {"items": [], "summary": {}, "configured": False}
+    try:
+        rows = (
+            db.table("ingest_items")
+            .select("id,file_name,status,youtube_url,youtube_video_id,error,size_bytes,ai_metadata,created_at,updated_at")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception as e:
+        return {"items": [], "summary": {}, "configured": True, "error": str(e)[:200]}
+
+    items = []
+    summary = {"HELD": 0, "QUEUED": 0, "PROCESSING": 0, "UPLOADED": 0, "FAILED": 0, "SKIPPED": 0}
+    for r in rows:
+        st = (r.get("status") or "").upper()
+        summary[st] = summary.get(st, 0) + 1
+        meta = r.get("ai_metadata") or {}
+        items.append({
+            "id": r["id"],
+            "file_name": r.get("file_name"),
+            "title": (meta.get("title") if isinstance(meta, dict) else None) or r.get("file_name"),
+            "status": st,
+            "youtube_url": r.get("youtube_url"),
+            "youtube_video_id": r.get("youtube_video_id"),
+            "error": r.get("error"),
+            "size_mb": round((r.get("size_bytes") or 0) / 1e6, 1),
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at"),
+        })
+    return {"items": items, "summary": summary, "configured": True}
+
+
+def retry_item(item_id: str) -> bool:
+    """Re-queue a FAILED item for another cloud upload attempt."""
+    db = _client()
+    if db is None:
+        return False
+    try:
+        res = (
+            db.table("ingest_items")
+            .update({"status": "QUEUED", "attempts": 0, "error": None, "updated_at": _now()})
+            .eq("id", item_id)
+            .eq("status", "FAILED")
+            .execute()
+        )
+        return bool(res.data)
+    except Exception as e:
+        system_logger.error(f"Ingest retry error: {e}")
+        return False
+
+
+def release_held(item_id: Optional[str] = None) -> int:
+    """Release held video(s) to the cloud upload queue (HELD -> QUEUED).
+
+    With item_id, release just that one; otherwise release all held items.
+    Returns how many were released.
+    """
+    db = _client()
+    if db is None:
+        return 0
+    try:
+        q = db.table("ingest_items").update(
+            {"status": "QUEUED", "updated_at": _now()}
+        ).eq("status", "HELD")
+        if item_id:
+            q = q.eq("id", item_id)
+        res = q.execute()
+        return len(res.data or [])
+    except Exception as e:
+        system_logger.error(f"Ingest release_held error: {e}")
+        return 0
 
 
 def _refresh_counts(db: Client) -> None:
@@ -182,6 +347,7 @@ def _refresh_counts(db: Client) -> None:
         _status["queued"] = sum(1 for r in rows if r["status"] in ("QUEUED", "PROCESSING"))
         _status["uploaded"] = sum(1 for r in rows if r["status"] == "UPLOADED")
         _status["failed"] = sum(1 for r in rows if r["status"] == "FAILED")
+        _status["held"] = sum(1 for r in rows if r["status"] == "HELD")
     except Exception:
         pass
 
@@ -216,6 +382,9 @@ def _loop() -> None:
     while True:
         try:
             run_once()
+            import asyncio
+            from app.services.supabase_sync import sync_all_from_cloud
+            asyncio.run(sync_all_from_cloud(force=True))
         except Exception as e:  # noqa: BLE001
             system_logger.error(f"Ingest loop error: {e}")
         time.sleep(_POLL_SECONDS)

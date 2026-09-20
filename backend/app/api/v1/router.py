@@ -9,6 +9,7 @@ from app.api.v1.calendar import router as calendar_router
 from app.api.v1.monetization import router as monetization_router
 from app.api.v1.automation import router as automation_router
 from app.api.v1.settings import router as settings_router
+from app.api.v1.uploads import router as uploads_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -22,3 +23,4 @@ api_router.include_router(calendar_router)
 api_router.include_router(monetization_router)
 api_router.include_router(automation_router)
 api_router.include_router(settings_router)
+api_router.include_router(uploads_router)

@@ -38,6 +38,9 @@ create table if not exists ingest_items (
     -- cleanup flags
     storage_deleted   boolean not null default false,  -- object removed after YouTube upload
     local_deleted     boolean not null default false,  -- laptop file removed after success
+    -- publishing controls
+    visibility        text default 'public',   -- public | unlisted | private
+    publish_at        timestamptz,             -- scheduled go-public time (drip)
     -- results
     transcript        text,
     ai_metadata       jsonb,
@@ -49,6 +52,10 @@ create table if not exists ingest_items (
 );
 
 create index if not exists ingest_items_status_idx on ingest_items (status);
+
+-- If you created the table before these columns existed, run once:
+--   alter table ingest_items add column if not exists visibility text default 'public';
+--   alter table ingest_items add column if not exists publish_at timestamptz;
 
 -- ============================================================================
 -- Row Level Security
