@@ -8,21 +8,15 @@ export const Settings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
-  // AI provider form state
-  const [defaultProvider, setDefaultProvider] = useState('gemini');
+  // AI provider form state (Gemini is the only provider the app + cloud use)
   const [costPreset, setCostPreset] = useState('balanced');
   const [geminiKey, setGeminiKey] = useState('');
-  const [openaiKey, setOpenaiKey] = useState('');
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [localAiUrl, setLocalAiUrl] = useState('http://localhost:11434/v1');
 
   const load = async () => {
     try {
       const res = await api.getSettings();
       setSettings(res);
-      setDefaultProvider(res.default_ai_provider || 'gemini');
       setCostPreset(res.ai_cost_preset || 'balanced');
-      setLocalAiUrl(res.local_ai_url || 'http://localhost:11434/v1');
     } catch (e) {
       console.error(e);
     }
@@ -38,14 +32,12 @@ export const Settings: React.FC = () => {
       setSaving(true);
       setSaveMsg(null);
       await api.updateAiSettings({
-        default_provider: defaultProvider,
+        default_provider: 'gemini',
         ai_cost_preset: costPreset,
         gemini_key: geminiKey || undefined,
-        openai_key: openaiKey || undefined,
-        anthropic_key: anthropicKey || undefined,
-        local_ai_url: localAiUrl || undefined,
       });
-      setSaveMsg('AI Settings saved successfully.');
+      setSaveMsg('AI settings saved.');
+      setGeminiKey('');
       load();
     } catch (e: any) {
       alert(`Error saving AI settings: ${e.message}`);
@@ -98,83 +90,34 @@ export const Settings: React.FC = () => {
         </div>
 
         <form onSubmit={handleSaveAI} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-slate-300 font-medium block mb-1">Active AI Provider</label>
-              <select
-                value={defaultProvider}
-                onChange={(e) => setDefaultProvider(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="gemini">Google Gemini (Default)</option>
-                <option value="openai">OpenAI (GPT-4o)</option>
-                <option value="anthropic">Anthropic (Claude 3.5)</option>
-                <option value="local">Local AI (Ollama / LocalAI)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-300 font-medium block mb-1">Cost & Quality Preset</label>
-              <select
-                value={costPreset}
-                onChange={(e) => setCostPreset(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="low_cost">Low Cost (Faster & Economical)</option>
-                <option value="balanced">Balanced (Optimal Speed & Quality)</option>
-                <option value="high_quality">High Quality (Max Detail & Depth)</option>
-              </select>
-            </div>
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1">
+              Gemini API Key {settings?.gemini_configured && <span className="text-emerald-400">✓ Active</span>}
+            </label>
+            <input
+              type="password"
+              placeholder={settings?.gemini_configured ? '•••••••••••••••• (leave blank to keep)' : 'Enter Gemini API key'}
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+            />
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              Powers titles, descriptions, tags and the Auto-Source scripts. The cloud worker uses its own
+              key(s) set as GitHub secrets.
+            </p>
           </div>
 
-          <div className="space-y-3 pt-2">
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1">
-                Gemini API Key {settings?.gemini_configured && '✓ (Active)'}
-              </label>
-              <input
-                type="password"
-                placeholder={settings?.gemini_configured ? '••••••••••••••••' : 'Enter Gemini API key'}
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1">
-                OpenAI API Key {settings?.openai_configured && '✓ (Active)'}
-              </label>
-              <input
-                type="password"
-                placeholder={settings?.openai_configured ? '••••••••••••••••' : 'Enter OpenAI API key'}
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1">Anthropic API Key {settings?.anthropic_configured && '✓ (Active)'}</label>
-              <input
-                type="password"
-                placeholder={settings?.anthropic_configured ? '••••••••••••••••' : 'Enter Anthropic API key'}
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1">Local AI Base URL (Ollama / vLLM)</label>
-              <input
-                type="text"
-                placeholder="http://localhost:11434/v1"
-                value={localAiUrl}
-                onChange={(e) => setLocalAiUrl(e.target.value)}
-                className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
+          <div>
+            <label className="text-xs text-slate-300 font-medium block mb-1">Quality preset</label>
+            <select
+              value={costPreset}
+              onChange={(e) => setCostPreset(e.target.value)}
+              className="w-full bg-[#161a27] border border-[#23293d] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="low_cost">Low Cost (Faster & Economical)</option>
+              <option value="balanced">Balanced (Optimal Speed & Quality)</option>
+              <option value="high_quality">High Quality (Max Detail & Depth)</option>
+            </select>
           </div>
 
           <div className="flex justify-end pt-2">
@@ -183,7 +126,7 @@ export const Settings: React.FC = () => {
               disabled={saving}
               className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors shadow-md shadow-indigo-600/20"
             >
-              {saving ? 'Saving...' : 'Save AI Settings'}
+              {saving ? 'Saving...' : 'Save AI settings'}
             </button>
           </div>
         </form>

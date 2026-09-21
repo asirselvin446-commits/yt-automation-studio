@@ -7,37 +7,19 @@ import { api } from './services/api';
 import { StudioNotification } from './types';
 
 // Pages
-import { Inbox } from './pages/Inbox';
-import { Processing } from './pages/Processing';
 import { UploadQueue } from './pages/UploadQueue';
-import { Videos } from './pages/Videos';
-import { VideoDetail } from './pages/VideoDetail';
-import { ContentCalendar } from './pages/ContentCalendar';
-import { Thumbnails } from './pages/Thumbnails';
-import { Ideas } from './pages/Ideas';
-import { Analytics } from './pages/Analytics';
-import { ChannelBrain } from './pages/ChannelBrain';
-import { Monetization } from './pages/Monetization';
-import { Automation } from './pages/Automation';
 import { AutoSource } from './pages/AutoSource';
 import { Accounts } from './pages/Accounts';
+import { Ideas } from './pages/Ideas';
+import { ChannelBrain } from './pages/ChannelBrain';
 import { Settings } from './pages/Settings';
 
 const pageTitles: Record<string, string> = {
   '/': 'Uploads',
-  '/inbox': 'Video Inbox',
-  '/processing': 'Processing Pipeline',
-  '/upload-queue': 'Uploads',
-  '/videos': 'Video Library',
-  '/calendar': 'Content Calendar',
-  '/thumbnails': 'Thumbnail Workspace',
-  '/ideas': 'AI Idea Lab',
-  '/analytics': 'Channel Analytics',
-  '/channel-brain': 'Channel Brain AI',
-  '/monetization': 'Monetization Progress',
-  '/automation': 'Automation Center',
   '/auto-source': 'Auto-Source Engine',
   '/accounts': 'YouTube Accounts',
+  '/ideas': 'AI Idea Lab',
+  '/channel-brain': 'Channel Brain AI',
   '/settings': 'Settings',
 };
 
@@ -46,18 +28,18 @@ const AppContent: React.FC = () => {
   const [notifications, setNotifications] = useState<StudioNotification[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [cloudIngestActive, setCloudIngestActive] = useState(false);
-  const [channelConnected, setChannelConnected] = useState(false);
+  const [accountCount, setAccountCount] = useState(0);
 
   const loadStatus = async () => {
     try {
-      const [health, notifs, ch] = await Promise.all([
+      const [health, notifs, accts] = await Promise.all([
         api.getHealth(),
         api.getNotifications(),
-        api.getChannelStatus(),
+        api.listAccounts().catch(() => ({ accounts: [] })),
       ]);
       setCloudIngestActive(health.cloud_ingest_active);
       setNotifications(notifs);
-      setChannelConnected(ch.is_connected);
+      setAccountCount((accts.accounts || []).length);
     } catch (e) {
       console.error('Status fetch error:', e);
     }
@@ -78,17 +60,12 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Determine active title
-  const currentTitle =
-    pageTitles[location.pathname] ||
-    (location.pathname.startsWith('/videos/') ? 'Video Review Workspace' : 'YT Automation Studio');
+  const currentTitle = pageTitles[location.pathname] || 'YT Automation Studio';
 
   return (
     <div className="flex h-screen bg-[#090a0f] text-slate-100 overflow-hidden font-sans">
-      {/* Sidebar */}
-      <Sidebar cloudIngestActive={cloudIngestActive} channelConnected={channelConnected} />
+      <Sidebar cloudIngestActive={cloudIngestActive} accountCount={accountCount} />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           title={currentTitle}
@@ -99,26 +76,15 @@ const AppContent: React.FC = () => {
         <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[#090a0f] to-[#0c0e15]">
           <Routes>
             <Route path="/" element={<UploadQueue />} />
-            <Route path="/inbox" element={<Inbox />} />
-            <Route path="/processing" element={<Processing />} />
-            <Route path="/upload-queue" element={<UploadQueue />} />
-            <Route path="/videos" element={<Videos />} />
-            <Route path="/videos/:id" element={<VideoDetail />} />
-            <Route path="/calendar" element={<ContentCalendar />} />
-            <Route path="/thumbnails" element={<Thumbnails />} />
-            <Route path="/ideas" element={<Ideas />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/channel-brain" element={<ChannelBrain />} />
-            <Route path="/monetization" element={<Monetization />} />
-            <Route path="/automation" element={<Automation />} />
             <Route path="/auto-source" element={<AutoSource />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/ideas" element={<Ideas />} />
+            <Route path="/channel-brain" element={<ChannelBrain />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>
 
-      {/* Slide-out Notification Drawer */}
       <NotificationDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}

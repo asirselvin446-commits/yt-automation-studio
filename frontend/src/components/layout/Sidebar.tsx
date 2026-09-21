@@ -13,10 +13,10 @@ import { YoutubeIcon } from '../common/YoutubeIcon';
 
 interface SidebarProps {
   cloudIngestActive?: boolean;
-  channelConnected?: boolean;
+  accountCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ cloudIngestActive = true, channelConnected = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ cloudIngestActive = true, accountCount = 0 }) => {
   const navGroups = [
     {
       title: 'STUDIO',
@@ -101,18 +101,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ cloudIngestActive = true, chan
           </span>
         </div>
 
-        {/* YouTube Status */}
+        {/* YouTube Accounts */}
         <div className="flex items-center justify-between px-3 py-2 rounded-md bg-[#131622] border border-[#1e2336] text-[11px]">
           <div className="flex items-center space-x-2">
-            <YoutubeIcon className={`w-3.5 h-3.5 ${channelConnected ? 'text-rose-500' : 'text-slate-500'}`} />
-            <span className="text-slate-300 font-medium">YouTube</span>
+            <YoutubeIcon className={`w-3.5 h-3.5 ${accountCount > 0 ? 'text-rose-500' : 'text-slate-500'}`} />
+            <span className="text-slate-300 font-medium">Accounts</span>
           </div>
           <span
             className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-              channelConnected ? 'bg-rose-500/15 text-rose-400' : 'bg-slate-700/30 text-slate-400'
+              accountCount > 0 ? 'bg-rose-500/15 text-rose-400' : 'bg-slate-700/30 text-slate-400'
             }`}
           >
-            {channelConnected ? 'CONNECTED' : 'STANDBY'}
+            {accountCount > 0 ? `${accountCount} connected` : 'NONE'}
           </span>
         </div>
       </div>

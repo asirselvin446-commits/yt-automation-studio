@@ -37,6 +37,13 @@ async def get_channel_status(db: AsyncSession = Depends(get_db)):
     q = await db.execute(select(Channel).where(Channel.is_active == True))
     channel = q.scalar_one_or_none()
     if not channel:
+        try:
+            from app.services.supabase_sync import sync_channel_from_cloud
+            channel = await sync_channel_from_cloud(db)
+        except Exception:
+            pass
+
+    if not channel:
         return {
             "is_connected": False,
             "message": "Connect YouTube to view live channel analytics and enable uploads."
@@ -52,12 +59,6 @@ async def get_channel_status(db: AsyncSession = Depends(get_db)):
         "video_count": channel.video_count,
         "view_count": channel.view_count
     }
-
-
-@router.get("/connect-url")
-async def get_connect_url():
-    res = youtube_oauth.get_authorization_url()
-    return res
 
 
 @router.get("/oauth2callback")
@@ -139,11 +140,3 @@ async def oauth2_callback(code: str = Query(...), state: str = Query(...), db: A
     )
 
 
-@router.post("/disconnect")
-async def disconnect_channel(db: AsyncSession = Depends(get_db)):
-    q = await db.execute(select(Channel))
-    channels = q.scalars().all()
-    for ch in channels:
-        ch.is_active = False
-    await db.commit()
-    return {"success": True, "message": "YouTube disconnected."}
