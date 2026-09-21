@@ -23,6 +23,59 @@ export const Accounts: React.FC = () => {
   const [msg, setMsg] = useState<string | null>(null);
   const poll = useRef<any>(null);
 
+  // Global upload settings (apply to all folder uploads)
+  const [uploadStatus, setUploadStatus] = useState<any>(null);
+  const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('public');
+  const [perDay, setPerDay] = useState(0);
+  const [publishMode, setPublishMode] = useState<'auto' | 'review'>('auto');
+  const [publishingHeld, setPublishingHeld] = useState(false);
+
+  const loadSettings = async () => {
+    try {
+      const r = await api.getSettings();
+      setUploadStatus(r.upload_status);
+      setVisibility(r.visibility || 'public');
+      setPerDay(r.schedule_per_day ?? 0);
+      setPublishMode(r.publish_mode === 'review' ? 'review' : 'auto');
+    } catch { /* ignore */ }
+  };
+
+  const savePublishing = async (patch: { visibility?: string; schedule_per_day?: number }) => {
+    if (patch.visibility) setVisibility(patch.visibility as any);
+    if (patch.schedule_per_day !== undefined) setPerDay(patch.schedule_per_day);
+    try {
+      await api.setPublishing(patch);
+      setMsg('Upload settings saved.');
+    } catch (e: any) {
+      setMsg(e.message);
+      loadSettings();
+    }
+  };
+
+  const changeMode = async (mode: 'auto' | 'review') => {
+    const prev = publishMode;
+    setPublishMode(mode);
+    try {
+      await api.setPublishMode(mode);
+    } catch (e: any) {
+      setPublishMode(prev);
+      setMsg(e.message);
+    }
+  };
+
+  const publishHeld = async () => {
+    setPublishingHeld(true);
+    try {
+      const r = await api.publishHeld();
+      setMsg(`Released ${r.released} video(s) to the upload queue.`);
+      loadSettings();
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setPublishingHeld(false);
+    }
+  };
+
   const load = async () => {
     try {
       const res = await api.listAccounts();
@@ -38,7 +91,12 @@ export const Accounts: React.FC = () => {
 
   useEffect(() => {
     load();
-    return () => poll.current && clearInterval(poll.current);
+    loadSettings();
+    const id = setInterval(loadSettings, 6000);
+    return () => {
+      poll.current && clearInterval(poll.current);
+      clearInterval(id);
+    };
   }, []);
 
   const addAccount = async () => {
@@ -259,6 +317,92 @@ export const Accounts: React.FC = () => {
           Each account needs a one-time Google sign-in (the "Add account" button). Uploads then run in
           the cloud even with your laptop off.
         </div>
+      </div>
+
+      {/* Global upload settings */}
+      <div className="p-6 rounded-2xl bg-[#11141e] border border-[#1f2434] space-y-4">
+        <div>
+          <h2 className="text-sm font-bold text-white">Upload settings</h2>
+          <p className="text-[11px] text-slate-500 mt-1">Apply to every video dropped in your linked folders.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Visibility</label>
+            <select
+              value={visibility}
+              onChange={(e) => savePublishing({ visibility: e.target.value })}
+              className="w-full bg-[#0d0f17] border border-[#252c42] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="public">Public</option>
+              <option value="unlisted">Unlisted</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Release schedule</label>
+            <select
+              value={perDay}
+              onChange={(e) => savePublishing({ schedule_per_day: parseInt(e.target.value, 10) })}
+              className="w-full bg-[#0d0f17] border border-[#252c42] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value={0}>Publish immediately</option>
+              <option value={1}>Drip · 1 per day</option>
+              <option value={2}>Drip · 2 per day</option>
+              <option value={3}>Drip · 3 per day</option>
+              <option value={4}>Drip · 4 per day</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-[11px] text-slate-400 font-semibold">Approval</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => changeMode('auto')}
+              className={`p-2.5 rounded-lg border text-left transition-colors ${
+                publishMode === 'auto' ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-[#0d0f17] border-[#252c42] hover:border-slate-600'
+              }`}
+            >
+              <div className={`text-xs font-bold ${publishMode === 'auto' ? 'text-emerald-400' : 'text-slate-300'}`}>Auto-publish</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Uploads automatically, laptop off.</div>
+            </button>
+            <button
+              onClick={() => changeMode('review')}
+              className={`p-2.5 rounded-lg border text-left transition-colors ${
+                publishMode === 'review' ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-[#0d0f17] border-[#252c42] hover:border-slate-600'
+              }`}
+            >
+              <div className={`text-xs font-bold ${publishMode === 'review' ? 'text-indigo-400' : 'text-slate-300'}`}>Review first</div>
+              <div className="text-[10px] text-slate-500 mt-0.5">Holds new videos until you publish them.</div>
+            </button>
+          </div>
+          {publishMode === 'review' && (uploadStatus?.held ?? 0) > 0 && (
+            <button
+              onClick={publishHeld}
+              disabled={publishingHeld}
+              className="w-full mt-1 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold disabled:opacity-60"
+            >
+              {publishingHeld ? 'Publishing…' : `Publish ${uploadStatus.held} held video(s) now`}
+            </button>
+          )}
+        </div>
+
+        {uploadStatus && (
+          <div className="grid grid-cols-4 gap-2 text-center pt-1">
+            {[
+              ['Held', uploadStatus.held ?? 0, 'text-indigo-400'],
+              ['Queued', uploadStatus.queued ?? 0, 'text-amber-400'],
+              ['Uploaded', uploadStatus.uploaded ?? 0, 'text-emerald-400'],
+              ['Failed', uploadStatus.failed ?? 0, 'text-rose-400'],
+            ].map(([label, val, color]) => (
+              <div key={label as string} className="p-2 rounded bg-[#0d0f17] border border-[#1f2434]">
+                <div className={`text-sm font-bold ${color}`}>{val as number}</div>
+                <div className="text-[10px] text-slate-500">{label as string}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
