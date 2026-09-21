@@ -23,30 +23,6 @@ export const Accounts: React.FC = () => {
   const [msg, setMsg] = useState<string | null>(null);
   const poll = useRef<any>(null);
 
-  // Aggregate queue status (across all accounts)
-  const [uploadStatus, setUploadStatus] = useState<any>(null);
-  const [publishingHeld, setPublishingHeld] = useState(false);
-
-  const loadSettings = async () => {
-    try {
-      const r = await api.getSettings();
-      setUploadStatus(r.upload_status);
-    } catch { /* ignore */ }
-  };
-
-  const publishHeld = async () => {
-    setPublishingHeld(true);
-    try {
-      const r = await api.publishHeld();
-      setMsg(`Released ${r.released} video(s) to the upload queue.`);
-      loadSettings();
-    } catch (e: any) {
-      setMsg(e.message);
-    } finally {
-      setPublishingHeld(false);
-    }
-  };
-
   const load = async () => {
     try {
       const res = await api.listAccounts();
@@ -62,12 +38,7 @@ export const Accounts: React.FC = () => {
 
   useEffect(() => {
     load();
-    loadSettings();
-    const id = setInterval(loadSettings, 6000);
-    return () => {
-      poll.current && clearInterval(poll.current);
-      clearInterval(id);
-    };
+    return () => poll.current && clearInterval(poll.current);
   }, []);
 
   const addAccount = async () => {
@@ -342,36 +313,6 @@ export const Accounts: React.FC = () => {
         </div>
       </div>
 
-      {/* Queue status (aggregate across accounts) */}
-      <div className="p-6 rounded-2xl bg-[#11141e] border border-[#1f2434] space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white">Queue status</h2>
-          {(uploadStatus?.held ?? 0) > 0 && (
-            <button
-              onClick={publishHeld}
-              disabled={publishingHeld}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold disabled:opacity-60"
-            >
-              {publishingHeld ? 'Publishing…' : `Publish ${uploadStatus.held} held`}
-            </button>
-          )}
-        </div>
-        {uploadStatus && (
-          <div className="grid grid-cols-4 gap-2 text-center">
-            {[
-              ['Held', uploadStatus.held ?? 0, 'text-indigo-400'],
-              ['Queued', uploadStatus.queued ?? 0, 'text-amber-400'],
-              ['Uploaded', uploadStatus.uploaded ?? 0, 'text-emerald-400'],
-              ['Failed', uploadStatus.failed ?? 0, 'text-rose-400'],
-            ].map(([label, val, color]) => (
-              <div key={label as string} className="p-2 rounded bg-[#0d0f17] border border-[#1f2434]">
-                <div className={`text-sm font-bold ${color}`}>{val as number}</div>
-                <div className="text-[10px] text-slate-500">{label as string}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 };
