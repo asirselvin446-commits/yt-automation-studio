@@ -60,8 +60,6 @@ export const api = {
 
   // YouTube Channel
   getChannelStatus: () => fetchJson<ChannelInfo>(`${BASE_URL}/youtube/status`),
-  getConnectUrl: () => fetchJson<{ url?: string; error?: string }>(`${BASE_URL}/youtube/connect-url`),
-  disconnectChannel: () => fetchJson<{ success: boolean }>(`${BASE_URL}/youtube/disconnect`, { method: 'POST' }),
 
   // Analytics
   getAnalytics: (timeframe: string = '28d') => fetchJson<any>(`${BASE_URL}/analytics?timeframe=${timeframe}`),
@@ -119,26 +117,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  setUploadFolder: (path: string) =>
-    fetchJson<{ success: boolean; custom_upload_folder: string; upload_status: any }>(
-      `${BASE_URL}/settings/upload-folder`,
-      { method: 'POST', body: JSON.stringify({ path }) },
-    ),
-  setPublishMode: (mode: 'auto' | 'review') =>
-    fetchJson<{ success: boolean; publish_mode: string }>(
-      `${BASE_URL}/settings/publish-mode`,
-      { method: 'POST', body: JSON.stringify({ mode }) },
-    ),
-  setPublishing: (payload: { visibility?: string; schedule_per_day?: number }) =>
-    fetchJson<{ success: boolean; visibility: string; schedule_per_day: number }>(
-      `${BASE_URL}/settings/publishing`,
-      { method: 'POST', body: JSON.stringify(payload) },
-    ),
-  publishHeld: () =>
-    fetchJson<{ success: boolean; released: number; upload_status: any }>(
-      `${BASE_URL}/settings/publish-held`,
-      { method: 'POST' },
-    ),
 
   // Live cloud pipeline
   listUploads: () =>

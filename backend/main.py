@@ -20,13 +20,22 @@ async def lifespan(app: FastAPI):
     settings.ensure_directories()
     await init_db()
     system_logger.info(f"Pipeline directories ready at: {settings.root_path}")
-    # Start the background pusher that sends videos from the user's chosen folder
-    # up to Supabase for the cloud (GitHub Actions) uploader.
-    try:
-        from app.services.supabase_ingest_service import start as start_ingest
-        start_ingest()
-    except Exception as e:  # noqa: BLE001
-        system_logger.error(f"Could not start Supabase ingest pusher: {e}")
+
+    # Launch background sync & ingest pusher without blocking server startup
+    import asyncio
+    async def _start_cloud_services():
+        try:
+            from app.services.supabase_sync import sync_all_from_cloud
+            await sync_all_from_cloud(force=True)
+        except Exception as e:
+            system_logger.error(f"Startup cloud sync failed: {e}")
+        try:
+            from app.services.supabase_ingest_service import start as start_ingest
+            start_ingest()
+        except Exception as e:
+            system_logger.error(f"Could not start Supabase ingest pusher: {e}")
+
+    asyncio.create_task(_start_cloud_services())
     yield
     # Shutdown
     system_logger.info("Shutting down YT Automation Studio Backend.")
@@ -69,6 +78,11 @@ def _resolve_frontend_dist() -> Path:
     return candidates[0]
 
 
+# Mount /data for thumbnail previews and local media
+data_dir = Path("./data").resolve()
+data_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
+
 frontend_dist = _resolve_frontend_dist()
 if frontend_dist.exists() and (frontend_dist / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
@@ -78,10 +92,17 @@ if frontend_dist.exists() and (frontend_dist / "index.html").exists():
         # Don't hijack API routes
         if full_path.startswith("api"):
             return None
-        file_path = frontend_dist / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(frontend_dist / "index.html")
+        # Resolve the request against the built UI dir and refuse anything that
+        # escapes it (path traversal like ../../secret) — only serve files that
+        # actually live under frontend_dist.
+        root = frontend_dist.resolve()
+        try:
+            candidate = (root / full_path).resolve()
+            if candidate.is_file() and (candidate == root or root in candidate.parents):
+                return FileResponse(candidate)
+        except (OSError, ValueError):
+            pass
+        return FileResponse(root / "index.html")
 else:
     @app.get("/")
     async def root():

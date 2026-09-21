@@ -219,7 +219,11 @@ export const AutoSource: React.FC = () => {
               onChange={(e) => patch('account_id', e.target.value)}
               className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
             >
-              <option value="">Primary account (default)</option>
+              <option value="">
+                {accounts.find((a) => a.is_primary)?.title
+                  ? `${accounts.find((a) => a.is_primary)?.title} (default)`
+                  : 'Default account'}
+              </option>
               {accounts.filter((a) => !a.is_primary).map((a) => (
                 <option key={a.id} value={a.id}>{a.title}</option>
               ))}

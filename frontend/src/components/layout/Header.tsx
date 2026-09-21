@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Folder, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Bell, Folder } from 'lucide-react';
 import { StudioNotification } from '../../types';
 
 interface HeaderProps {
@@ -7,15 +7,13 @@ interface HeaderProps {
   inboxPath?: string;
   notifications: StudioNotification[];
   onOpenNotifications: () => void;
-  approvalRequired?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   title,
-  inboxPath = 'D:\\YT-Automation\\INBOX',
+  inboxPath,
   notifications,
   onOpenNotifications,
-  approvalRequired = true,
 }) => {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -24,20 +22,16 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Title & Path */}
       <div className="flex items-center space-x-4">
         <h2 className="text-lg font-bold text-white tracking-tight">{title}</h2>
-        <div className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#151824] border border-[#23293d] text-[11px] text-slate-400 font-mono">
-          <Folder className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="truncate max-w-xs">{inboxPath}</span>
-        </div>
+        {inboxPath && (
+          <div className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#151824] border border-[#23293d] text-[11px] text-slate-400 font-mono">
+            <Folder className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="truncate max-w-xs">{inboxPath}</span>
+          </div>
+        )}
       </div>
 
-      {/* Badges & Actions */}
+      {/* Actions */}
       <div className="flex items-center space-x-3">
-        {/* Safety Mode Badge */}
-        <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>{approvalRequired ? 'Approval Required' : 'Auto-Publish'}</span>
-        </div>
-
         {/* Notification Bell */}
         <button
           onClick={onOpenNotifications}

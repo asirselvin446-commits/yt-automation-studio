@@ -7,7 +7,6 @@ import { api } from './services/api';
 import { StudioNotification } from './types';
 
 // Pages
-import { Dashboard } from './pages/Dashboard';
 import { Inbox } from './pages/Inbox';
 import { Processing } from './pages/Processing';
 import { UploadQueue } from './pages/UploadQueue';
@@ -95,7 +94,6 @@ const AppContent: React.FC = () => {
           title={currentTitle}
           notifications={notifications}
           onOpenNotifications={() => setIsDrawerOpen(true)}
-          approvalRequired={true}
         />
 
         <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[#090a0f] to-[#0c0e15]">
