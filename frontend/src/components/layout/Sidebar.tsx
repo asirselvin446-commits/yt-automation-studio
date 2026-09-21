@@ -1,55 +1,29 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  FolderInput,
-  Cpu,
   UploadCloud,
-  Film,
-  Calendar,
-  Image,
   Lightbulb,
-  BarChart3,
   BrainCircuit,
-  DollarSign,
-  Sliders,
   Settings,
   Radio,
+  Sparkles,
 } from 'lucide-react';
 import { YoutubeIcon } from '../common/YoutubeIcon';
 
 interface SidebarProps {
-  agentOnline?: boolean;
+  cloudIngestActive?: boolean;
   channelConnected?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ agentOnline = true, channelConnected = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ cloudIngestActive = true, channelConnected = false }) => {
   const navGroups = [
     {
-      title: 'CORE WORKFLOW',
+      title: 'STUDIO',
       items: [
-        { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-        { path: '/inbox', label: 'Inbox', icon: FolderInput },
-        { path: '/processing', label: 'Processing', icon: Cpu },
-        { path: '/upload-queue', label: 'Upload Queue', icon: UploadCloud },
-        { path: '/videos', label: 'Videos Library', icon: Film },
-      ],
-    },
-    {
-      title: 'CONTENT & AI',
-      items: [
-        { path: '/calendar', label: 'Calendar', icon: Calendar },
-        { path: '/thumbnails', label: 'Thumbnails', icon: Image },
+        { path: '/', label: 'Uploads', icon: UploadCloud },
+        { path: '/auto-source', label: 'Auto-Source', icon: Sparkles },
         { path: '/ideas', label: 'Idea Lab', icon: Lightbulb },
         { path: '/channel-brain', label: 'Channel Brain', icon: BrainCircuit },
-      ],
-    },
-    {
-      title: 'ANALYTICS & CONTROL',
-      items: [
-        { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-        { path: '/monetization', label: 'Monetization', icon: DollarSign },
-        { path: '/automation', label: 'Automation Center', icon: Sliders },
         { path: '/settings', label: 'Settings', icon: Settings },
       ],
     },
@@ -71,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ agentOnline = true, channelCon
                   DESKTOP
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400 font-medium">Local-First Automation</p>
+              <p className="text-[11px] text-slate-400 font-medium">Cloud Studio Automation</p>
             </div>
           </div>
         </div>
@@ -89,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ agentOnline = true, channelCon
                   <NavLink
                     key={item.path}
                     to={item.path}
+                    end={item.path === '/'}
                     className={({ isActive }) =>
                       `flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 ${
                         isActive
@@ -109,18 +84,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ agentOnline = true, channelCon
 
       {/* System Status Indicators */}
       <div className="p-3 border-t border-[#1f2433] bg-[#090b12] space-y-2">
-        {/* Watcher Status */}
+        {/* Cloud Ingest Status */}
         <div className="flex items-center justify-between px-3 py-2 rounded-md bg-[#131622] border border-[#1e2336] text-[11px]">
           <div className="flex items-center space-x-2">
-            <Radio className={`w-3.5 h-3.5 ${agentOnline ? 'text-emerald-400 animate-pulse' : 'text-rose-400'}`} />
-            <span className="text-slate-300 font-medium">Watcher Agent</span>
+            <Radio className={`w-3.5 h-3.5 ${cloudIngestActive ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+            <span className="text-slate-300 font-medium">Cloud Ingest</span>
           </div>
           <span
             className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-              agentOnline ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+              cloudIngestActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700/30 text-slate-400'
             }`}
           >
-            {agentOnline ? 'ACTIVE' : 'IDLE'}
+            {cloudIngestActive ? 'ACTIVE' : 'STANDBY'}
           </span>
         </div>
 

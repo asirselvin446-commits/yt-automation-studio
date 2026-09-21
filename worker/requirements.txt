@@ -3,3 +3,6 @@
 httpx==0.27.2
 supabase==2.9.1
 cryptography==43.0.1
+# Auto-source content engine (free-tier video generation in the cloud):
+edge-tts==6.1.19   # free, keyless neural TTS narration
+pillow==10.4.0     # gradient fallback image when generation is unavailable

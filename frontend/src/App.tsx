@@ -20,13 +20,14 @@ import { Analytics } from './pages/Analytics';
 import { ChannelBrain } from './pages/ChannelBrain';
 import { Monetization } from './pages/Monetization';
 import { Automation } from './pages/Automation';
+import { AutoSource } from './pages/AutoSource';
 import { Settings } from './pages/Settings';
 
 const pageTitles: Record<string, string> = {
-  '/': 'Dashboard',
+  '/': 'Uploads',
   '/inbox': 'Video Inbox',
   '/processing': 'Processing Pipeline',
-  '/upload-queue': 'Upload & Approval Queue',
+  '/upload-queue': 'Uploads',
   '/videos': 'Video Library',
   '/calendar': 'Content Calendar',
   '/thumbnails': 'Thumbnail Workspace',
@@ -35,6 +36,7 @@ const pageTitles: Record<string, string> = {
   '/channel-brain': 'Channel Brain AI',
   '/monetization': 'Monetization Progress',
   '/automation': 'Automation Center',
+  '/auto-source': 'Auto-Source Engine',
   '/settings': 'Settings',
 };
 
@@ -42,24 +44,19 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const [notifications, setNotifications] = useState<StudioNotification[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [agentOnline, setAgentOnline] = useState(true);
+  const [cloudIngestActive, setCloudIngestActive] = useState(false);
   const [channelConnected, setChannelConnected] = useState(false);
-  const [inboxPath, setInboxPath] = useState('D:\\YT-Automation\\INBOX');
 
   const loadStatus = async () => {
     try {
-      const [health, notifs, ch, stats] = await Promise.all([
+      const [health, notifs, ch] = await Promise.all([
         api.getHealth(),
         api.getNotifications(),
         api.getChannelStatus(),
-        api.getFolderStats(),
       ]);
-      setAgentOnline(health.agent_active);
+      setCloudIngestActive(health.cloud_ingest_active);
       setNotifications(notifs);
       setChannelConnected(ch.is_connected);
-      if (stats.root) {
-        setInboxPath(`${stats.root}\\INBOX`);
-      }
     } catch (e) {
       console.error('Status fetch error:', e);
     }
@@ -88,13 +85,12 @@ const AppContent: React.FC = () => {
   return (
     <div className="flex h-screen bg-[#090a0f] text-slate-100 overflow-hidden font-sans">
       {/* Sidebar */}
-      <Sidebar agentOnline={agentOnline} channelConnected={channelConnected} />
+      <Sidebar cloudIngestActive={cloudIngestActive} channelConnected={channelConnected} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           title={currentTitle}
-          inboxPath={inboxPath}
           notifications={notifications}
           onOpenNotifications={() => setIsDrawerOpen(true)}
           approvalRequired={true}
@@ -102,7 +98,7 @@ const AppContent: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[#090a0f] to-[#0c0e15]">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<UploadQueue />} />
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/processing" element={<Processing />} />
             <Route path="/upload-queue" element={<UploadQueue />} />
@@ -115,6 +111,7 @@ const AppContent: React.FC = () => {
             <Route path="/channel-brain" element={<ChannelBrain />} />
             <Route path="/monetization" element={<Monetization />} />
             <Route path="/automation" element={<Automation />} />
+            <Route path="/auto-source" element={<AutoSource />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

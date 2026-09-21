@@ -41,6 +41,7 @@ export const api = {
   },
   getVideo: (id: string) => fetchJson<VideoDetail>(`${BASE_URL}/videos/${id}`),
   approveVideo: (id: string) => fetchJson<{ success: boolean; status: string }>(`${BASE_URL}/videos/${id}/approve`, { method: 'POST' }),
+  triggerUpload: (id: string) => fetchJson<{ success: boolean; message: string }>(`${BASE_URL}/videos/${id}/upload`, { method: 'POST' }),
   rejectVideo: (id: string, reason?: string) =>
     fetchJson<{ success: boolean }>(`${BASE_URL}/videos/${id}/reject?reason=${encodeURIComponent(reason || 'Rejected')}`, { method: 'POST' }),
   selectTitle: (videoId: string, titleId: string) =>
@@ -123,4 +124,49 @@ export const api = {
       `${BASE_URL}/settings/upload-folder`,
       { method: 'POST', body: JSON.stringify({ path }) },
     ),
+  setPublishMode: (mode: 'auto' | 'review') =>
+    fetchJson<{ success: boolean; publish_mode: string }>(
+      `${BASE_URL}/settings/publish-mode`,
+      { method: 'POST', body: JSON.stringify({ mode }) },
+    ),
+  setPublishing: (payload: { visibility?: string; schedule_per_day?: number }) =>
+    fetchJson<{ success: boolean; visibility: string; schedule_per_day: number }>(
+      `${BASE_URL}/settings/publishing`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  publishHeld: () =>
+    fetchJson<{ success: boolean; released: number; upload_status: any }>(
+      `${BASE_URL}/settings/publish-held`,
+      { method: 'POST' },
+    ),
+
+  // Live cloud pipeline
+  listUploads: () =>
+    fetchJson<{ items: any[]; summary: Record<string, number>; configured: boolean }>(
+      `${BASE_URL}/uploads`,
+    ),
+  publishUpload: (id: string) =>
+    fetchJson<{ success: boolean }>(`${BASE_URL}/uploads/${id}/publish`, { method: 'POST' }),
+  retryUpload: (id: string) =>
+    fetchJson<{ success: boolean }>(`${BASE_URL}/uploads/${id}/retry`, { method: 'POST' }),
+
+  // Auto-Source engine (cloud content generation)
+  getAutosource: () => fetchJson<any>(`${BASE_URL}/autosource`),
+  setAutosourceConfig: (payload: {
+    enabled?: boolean;
+    niche?: string;
+    per_day?: number;
+    provider?: 'edge' | 'fish';
+    voice?: string;
+    fish_api_key?: string;
+    fish_voice?: string;
+  }) =>
+    fetchJson<{ success: boolean; config: any }>(`${BASE_URL}/autosource/config`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  generateAutosource: () =>
+    fetchJson<{ started: boolean; reason: string }>(`${BASE_URL}/autosource/generate`, {
+      method: 'POST',
+    }),
 };

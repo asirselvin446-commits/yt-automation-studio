@@ -58,6 +58,45 @@ create index if not exists ingest_items_status_idx on ingest_items (status);
 --   alter table ingest_items add column if not exists publish_at timestamptz;
 
 -- ============================================================================
+-- Auto-source content engine
+-- ----------------------------------------------------------------------------
+-- The desktop app writes ONE config row; GitHub Actions reads it and generates
+-- + uploads videos on a schedule (works with the laptop off). Every generation
+-- writes a row into autosource_runs so the app can show live status.
+-- ============================================================================
+create table if not exists autosource_config (
+    id            text primary key default 'default',
+    enabled       boolean not null default false,
+    niche         text    not null default 'amazing facts',
+    per_day       int     not null default 1,   -- videos generated per day (1-8)
+    provider      text    not null default 'edge',  -- edge | fish
+    voice         text    default '',           -- edge-tts voice, e.g. en-US-AriaNeural
+    fish_api_key  text    default '',           -- optional Fish Audio key (nicer voice)
+    fish_voice    text    default '',           -- optional Fish reference/voice id
+    updated_at    timestamptz not null default now()
+);
+
+create table if not exists autosource_runs (
+    id                text primary key default gen_random_uuid()::text,
+    status            text not null default 'RUNNING',  -- RUNNING | DONE | FAILED
+    stage             text,                             -- human-readable live stage
+    niche             text,
+    topic             text,
+    title             text,
+    youtube_video_id  text,
+    youtube_url       text,
+    publish_at        timestamptz,
+    error             text,
+    created_at        timestamptz not null default now(),
+    updated_at        timestamptz not null default now()
+);
+
+create index if not exists autosource_runs_created_idx on autosource_runs (created_at desc);
+
+alter table autosource_config enable row level security;
+alter table autosource_runs   enable row level security;
+
+-- ============================================================================
 -- Row Level Security
 -- ----------------------------------------------------------------------------
 -- Enable RLS and add NO policies. With RLS on and no permissive policy, the
