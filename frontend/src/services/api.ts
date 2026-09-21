@@ -156,10 +156,12 @@ export const api = {
     enabled?: boolean;
     niche?: string;
     per_day?: number;
+    format?: 'shorts' | 'landscape';
     provider?: 'edge' | 'fish';
     voice?: string;
     fish_api_key?: string;
     fish_voice?: string;
+    pexels_api_key?: string;
   }) =>
     fetchJson<{ success: boolean; config: any }>(`${BASE_URL}/autosource/config`, {
       method: 'POST',

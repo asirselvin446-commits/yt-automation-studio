@@ -69,12 +69,18 @@ create table if not exists autosource_config (
     enabled       boolean not null default false,
     niche         text    not null default 'amazing facts',
     per_day       int     not null default 1,   -- videos generated per day (1-8)
+    format        text    not null default 'shorts',  -- shorts (9:16) | landscape (16:9)
     provider      text    not null default 'edge',  -- edge | fish
     voice         text    default '',           -- edge-tts voice, e.g. en-US-AriaNeural
     fish_api_key  text    default '',           -- optional Fish Audio key (nicer voice)
     fish_voice    text    default '',           -- optional Fish reference/voice id
+    pexels_api_key text   default '',           -- free Pexels key for stock B-roll video
     updated_at    timestamptz not null default now()
 );
+
+-- If you created autosource_config before these columns existed, run once:
+--   alter table autosource_config add column if not exists format text not null default 'shorts';
+--   alter table autosource_config add column if not exists pexels_api_key text default '';
 
 create table if not exists autosource_runs (
     id                text primary key default gen_random_uuid()::text,

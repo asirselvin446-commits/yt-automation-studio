@@ -22,10 +22,12 @@ class AutosourceConfigDTO(BaseModel):
     enabled: Optional[bool] = None
     niche: Optional[str] = None
     per_day: Optional[int] = None
+    format: Optional[str] = None              # shorts | landscape
     provider: Optional[str] = None            # edge | fish
     voice: Optional[str] = None               # edge-tts voice id
     fish_api_key: Optional[str] = None        # optional; blank keeps existing
     fish_voice: Optional[str] = None
+    pexels_api_key: Optional[str] = None      # optional; blank keeps existing
 
 
 @router.post("/config")

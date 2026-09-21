@@ -12,9 +12,10 @@ from typing import Any, Dict, List
 from ai import gemini_post
 
 SYSTEM = (
-    "You are a professional short-form YouTube scriptwriter for a faceless "
-    "facts/explainer channel. Write accurate, engaging narration. Never invent "
-    "false facts. Keep it original."
+    "You are a viral short-form YouTube storyteller for a faceless channel. You "
+    "write vivid, suspenseful, TRUE micro-stories that hook in 2 seconds and pay "
+    "off at the end. Cinematic and amazing, never a dry list. Never invent false "
+    "facts. Everything original."
 )
 
 
@@ -23,15 +24,20 @@ def _fallback_script(niche: str) -> Dict[str, Any]:
     topic = f"{niche} facts"
     beats = [
         {"narration": f"Here are some fascinating things about {niche} you probably didn't know.",
-         "image_prompt": f"cinematic establishing shot representing {niche}, dramatic lighting"},
-        {"narration": "Number one: the details behind it are stranger than they first appear.",
-         "image_prompt": f"detailed close-up illustrating {niche}, vivid colors"},
-        {"narration": "Number two: scientists and historians are still uncovering new information.",
-         "image_prompt": f"a discovery or research scene about {niche}, atmospheric"},
-        {"narration": "Number three: it connects to everyday life in ways most people overlook.",
-         "image_prompt": f"everyday scene subtly connected to {niche}, warm tones"},
-        {"narration": "If you found that interesting, subscribe for a new fact every single day.",
-         "image_prompt": f"inspiring wide shot themed around {niche}, golden hour"},
+         "image_prompt": f"cinematic establishing shot representing {niche}, dramatic lighting",
+         "visual_query": f"{niche}"},
+        {"narration": "The details behind it are stranger than they first appear.",
+         "image_prompt": f"detailed close-up illustrating {niche}, vivid colors",
+         "visual_query": f"{niche} closeup"},
+        {"narration": "Scientists are still uncovering new information about it today.",
+         "image_prompt": f"a discovery or research scene about {niche}, atmospheric",
+         "visual_query": "science research lab"},
+        {"narration": "And it connects to everyday life in ways most people overlook.",
+         "image_prompt": f"everyday scene subtly connected to {niche}, warm tones",
+         "visual_query": "city people street"},
+        {"narration": "If that amazed you, follow for a new story every single day.",
+         "image_prompt": f"inspiring wide shot themed around {niche}, golden hour",
+         "visual_query": "sunrise landscape aerial"},
     ]
     return {
         "topic": topic,
@@ -47,36 +53,41 @@ def _fallback_script(niche: str) -> Dict[str, Any]:
 
 
 def generate_script(niche: str, avoid_topics: List[str] | None = None,
-                    beats: int = 6) -> Dict[str, Any]:
-    """Return {topic, title, description, tags[], hook, beats[{narration, image_prompt}]}."""
+                    beats: int = 5) -> Dict[str, Any]:
+    """Return {topic, title, description, tags[], hook, beats[{narration, image_prompt, visual_query}]}."""
     avoid = ", ".join((avoid_topics or [])[:40]) or "none yet"
     prompt = f"""
-Create ONE original short YouTube video (about 45-75 seconds) for a faceless
-channel in this niche: "{niche}".
+Write ONE original, jaw-dropping YouTube SHORT (vertical, ~35-55 seconds) for a
+faceless channel in this niche: "{niche}".
 
-Pick a specific, fresh topic within the niche. Do NOT repeat any of these
-already-covered topics: {avoid}.
+Tell it as a gripping MICRO-STORY, not a dry list: a 2-second hook that makes it
+impossible to scroll past, rising curiosity, then a satisfying payoff. Make the
+viewer feel amazed. Everything must be TRUE.
+
+Pick a specific, fresh angle. Do NOT repeat any of these already-covered topics: {avoid}.
 
 Return PURE JSON in exactly this shape:
 {{
-  "topic": "the specific topic you chose (a few words)",
-  "title": "a punchy YouTube title under 90 characters",
-  "description": "2-3 sentence description grounded in the script, then 4-6 relevant hashtags",
+  "topic": "the specific angle you chose (a few words)",
+  "title": "a scroll-stopping title under 80 characters (add #shorts at the end)",
+  "description": "1-2 punchy sentences, then 5-7 relevant hashtags including #shorts",
   "tags": ["tag1","tag2","tag3","tag4","tag5","tag6"],
-  "hook": "a 1-sentence opening hook that creates curiosity in the first 3 seconds",
+  "hook": "the spoken opening line — a 2-second pattern-interrupt that creates instant curiosity",
   "beats": [
     {{
-      "narration": "one spoken sentence (natural, punchy, factual)",
-      "image_prompt": "a vivid, concrete visual description to illustrate this sentence (for an AI image generator; no text/words in the image)"
+      "narration": "one short spoken sentence that advances the story (natural, punchy)",
+      "image_prompt": "a vivid, concrete scene to illustrate it (for an AI image generator; no text in the image)",
+      "visual_query": "2-4 simple English keywords to find matching stock B-ROLL video (concrete nouns/actions, e.g. 'ocean waves aerial')"
     }}
   ]
 }}
 
 Rules:
-- Exactly {beats} beats, plus the hook is spoken first (do not include the hook inside beats).
-- Every fact must be true and non-controversial. No medical, legal, or financial advice.
-- Narration should sound natural when read aloud. No stage directions, no emojis in narration.
-- image_prompt must describe a real, filmable-looking scene — never ask for on-screen text.
+- Exactly {beats} beats; the hook is spoken FIRST and is separate from beats.
+- Keep sentences SHORT so the whole thing stays under ~55 seconds when read aloud.
+- Every fact true and non-controversial. No medical, legal, or financial advice.
+- Narration: natural spoken English, no stage directions, no emojis, no hashtags.
+- visual_query must be plain, filmable keywords a stock library would have (avoid abstract concepts).
 """
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -114,6 +125,7 @@ Rules:
             beats_out.append({
                 "narration": str(b.get("narration")).strip(),
                 "image_prompt": str(b.get("image_prompt") or data.get("topic") or niche).strip(),
+                "visual_query": str(b.get("visual_query") or data.get("topic") or niche).strip(),
             })
     if not beats_out:
         return _fallback_script(niche)

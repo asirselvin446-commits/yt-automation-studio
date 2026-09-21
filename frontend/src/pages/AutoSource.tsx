@@ -78,14 +78,16 @@ export const AutoSource: React.FC = () => {
         enabled: cfg.enabled,
         niche: cfg.niche,
         per_day: cfg.per_day,
+        format: cfg.format,
         provider: cfg.provider,
         voice: cfg.voice,
         fish_voice: cfg.fish_voice,
         ...(cfg._fishKey ? { fish_api_key: cfg._fishKey } : {}),
+        ...(cfg._pexelsKey ? { pexels_api_key: cfg._pexelsKey } : {}),
         ...overrides,
       };
       const res = await api.setAutosourceConfig(payload);
-      setCfg({ ...res.config, _fishKey: '' });
+      setCfg({ ...res.config, _fishKey: '', _pexelsKey: '' });
       setMsg('Saved.');
     } catch (e: any) {
       setMsg(e.message);
@@ -198,6 +200,19 @@ export const AutoSource: React.FC = () => {
           </div>
 
           <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Format</label>
+            <select
+              value={cfg.format || 'shorts'}
+              onChange={(e) => patch('format', e.target.value)}
+              className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+            >
+              <option value="shorts">Shorts — 9:16 vertical, under 60s</option>
+              <option value="landscape">Landscape — 16:9 horizontal</option>
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1.5">Shorts get the #Shorts tag automatically.</p>
+          </div>
+
+          <div>
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Voice engine</label>
             <select
               value={cfg.provider}
@@ -247,6 +262,25 @@ export const AutoSource: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Stock footage key — turns still images into real B-roll video */}
+        <div className="p-4 rounded-xl bg-[#0d0f17] border border-[#1f2434]">
+          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Stock footage — Pexels API key {cfg.pexels_api_key_set && <span className="text-emerald-400">✓ saved</span>}
+          </label>
+          <input
+            type="password"
+            value={cfg._pexelsKey || ''}
+            onChange={(e) => patch('_pexelsKey', e.target.value)}
+            placeholder={cfg.pexels_api_key_set ? '•••••• (leave blank to keep)' : 'paste your free Pexels key'}
+            className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#11141e] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+          />
+          <p className="text-[11px] text-slate-500 mt-1.5">
+            Free key from{' '}
+            <a href="https://www.pexels.com/api/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">pexels.com/api</a>.
+            With a key, each line uses real licensed video footage. Without one, it falls back to AI images.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 pt-1">

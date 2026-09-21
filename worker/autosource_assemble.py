@@ -1,9 +1,10 @@
-"""Assemble narration + generated images into a finished MP4 with ffmpeg.
+"""Assemble narration + per-beat media into a finished MP4 with ffmpeg.
 
-Each beat becomes a clip: its image gets a slow Ken-Burns zoom for exactly the
-length of its narration, with the spoken sentence burned in as a caption. The
-clips are then concatenated into one video. ffmpeg ships on GitHub's Ubuntu
-runners, so this all happens in the cloud.
+Each beat becomes a clip sized to its narration. The visual is either a real
+stock video clip (scaled/cropped to fill the frame) or, as a fallback, an AI
+image with a slow Ken-Burns zoom. The spoken sentence is burned in as a large,
+bold caption. Clips are then concatenated. Supports vertical Shorts (1080x1920)
+and landscape (1280x720). ffmpeg ships on GitHub's Ubuntu runners.
 """
 import os
 import shutil
@@ -12,13 +13,11 @@ import textwrap
 from typing import Any, Dict, List
 
 FPS = 30
-WIDTH = 1280
-HEIGHT = 720
 
 _FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
     "C:/Windows/Fonts/arial.ttf",
 ]
@@ -45,47 +44,70 @@ def probe_duration(path: str) -> float:
 def _prepare_font(workdir: str) -> str | None:
     for cand in _FONT_CANDIDATES:
         if os.path.exists(cand):
-            dst = os.path.join(workdir, "font.ttf")
             try:
-                shutil.copy(cand, dst)
+                shutil.copy(cand, os.path.join(workdir, "font.ttf"))
                 return "font.ttf"
             except Exception:
                 return None
     return None
 
 
-def _write_caption(workdir: str, idx: int, text: str) -> str:
-    wrapped = "\n".join(textwrap.wrap(text.strip(), width=36)) or " "
+def _write_caption(workdir: str, idx: int, text: str, wrap: int) -> str:
+    wrapped = "\n".join(textwrap.wrap(text.strip(), width=wrap)) or " "
     name = f"cap{idx}.txt"
     with open(os.path.join(workdir, name), "w", encoding="utf-8") as f:
         f.write(wrapped)
     return name
 
 
-def _zoompan_chain() -> str:
-    # Supersample x2 so the slow zoom stays crisp, then render at target size.
+def _caption_filter(font: str, caption_file: str, width: int, height: int) -> str:
+    fontsize = max(28, int(width * 0.058))
+    borderw = max(2, int(width * 0.004))
+    # Centered horizontally, sitting in the lower third — the Shorts sweet spot.
+    y = f"h*0.70-text_h/2"
     return (
-        f"scale={WIDTH * 2}:{HEIGHT * 2}:force_original_aspect_ratio=increase,"
-        f"crop={WIDTH * 2}:{HEIGHT * 2},"
-        f"zoompan=z='min(zoom+0.0008,1.20)':d={{frames}}:"
-        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={WIDTH}x{HEIGHT}:fps={FPS}"
+        f"drawtext=fontfile={font}:textfile={caption_file}:reload=0:"
+        f"fontcolor=white:fontsize={fontsize}:borderw={borderw}:bordercolor=black:"
+        f"box=1:boxcolor=black@0.45:boxborderw={int(fontsize*0.4)}:"
+        f"line_spacing={int(fontsize*0.2)}:x=(w-text_w)/2:y={y}"
     )
 
 
-def _build_clip(workdir: str, img: str, aud: str, duration: float,
-                caption_file: str | None, font: str | None, out_name: str) -> bool:
-    frames = int(duration * FPS) + FPS  # a little headroom; -shortest trims it
-    chain = _zoompan_chain().format(frames=frames)
+def _cover_chain(width: int, height: int) -> str:
+    return (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},setsar=1,fps={FPS}")
+
+
+def _kenburns_chain(width: int, height: int, frames: int) -> str:
+    return (
+        f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
+        f"crop={width * 2}:{height * 2},"
+        f"zoompan=z='min(zoom+0.0008,1.20)':d={frames}:"
+        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={FPS}"
+    )
+
+
+def _build_clip(workdir: str, beat: Dict[str, Any], duration: float,
+                caption_file: str | None, font: str | None, out_name: str,
+                width: int, height: int) -> bool:
+    is_video = bool(beat.get("video_path"))
+    if is_video:
+        src = os.path.relpath(beat["video_path"], workdir)
+        chain = _cover_chain(width, height)
+    else:
+        src = os.path.relpath(beat["image_path"], workdir)
+        chain = _kenburns_chain(width, height, int(duration * FPS) + FPS)
+
     if caption_file and font:
-        chain += (
-            f",drawtext=fontfile={font}:textfile={caption_file}:reload=0:"
-            f"fontcolor=white:fontsize=42:box=1:boxcolor=black@0.55:boxborderw=22:"
-            f"line_spacing=10:x=(w-text_w)/2:y=h-text_h-70"
-        )
-    cmd = [
-        "ffmpeg", "-y",
-        "-loop", "1", "-i", img,
-        "-i", aud,
+        chain += "," + _caption_filter(font, caption_file, width, height)
+
+    cmd = ["ffmpeg", "-y"]
+    if is_video:
+        cmd += ["-stream_loop", "-1", "-i", src]      # loop short clips to fill
+    else:
+        cmd += ["-loop", "1", "-i", src]
+    cmd += [
+        "-i", os.path.relpath(beat["audio_path"], workdir),
         "-filter_complex", f"[0:v]{chain}[v]",
         "-map", "[v]", "-map", "1:a",
         "-t", f"{duration:.3f}",
@@ -95,34 +117,32 @@ def _build_clip(workdir: str, img: str, aud: str, duration: float,
     ]
     rc, err = _run(cmd, workdir)
     if rc != 0 and caption_file:
-        # Captioning can fail on runners without freetype fonts — retry clean.
-        print(f"[autosource-assemble] caption render failed, retrying without caption", flush=True)
-        return _build_clip(workdir, img, aud, duration, None, None, out_name)
+        print("[autosource-assemble] caption render failed, retrying without caption", flush=True)
+        return _build_clip(workdir, beat, duration, None, None, out_name, width, height)
     if rc != 0:
         print(f"[autosource-assemble] clip build failed: {err[-600:]}", flush=True)
     return rc == 0
 
 
-def build_video(beats: List[Dict[str, Any]], out_path: str, workdir: str) -> str:
-    """beats: [{image_path, audio_path, text}]. Writes final mp4 to out_path."""
+def build_video(beats: List[Dict[str, Any]], out_path: str, workdir: str,
+                width: int = 1080, height: int = 1920) -> str:
+    """beats: [{audio_path, text, video_path? , image_path?}] -> out_path mp4."""
     os.makedirs(workdir, exist_ok=True)
     font = _prepare_font(workdir)
+    wrap = 20 if height > width else 36  # tighter wrapping for vertical
 
     clip_names: List[str] = []
     for i, beat in enumerate(beats):
-        img = os.path.relpath(beat["image_path"], workdir)
-        aud = os.path.relpath(beat["audio_path"], workdir)
         dur = probe_duration(beat["audio_path"])
-        cap = _write_caption(workdir, i, beat.get("text", ""))
+        cap = _write_caption(workdir, i, beat.get("text", ""), wrap)
         clip = f"clip{i}.mp4"
-        if _build_clip(workdir, img, aud, dur, cap, font, clip):
+        if _build_clip(workdir, beat, dur, cap, font, clip, width, height):
             clip_names.append(clip)
 
     if not clip_names:
         raise RuntimeError("No clips could be assembled")
 
-    concat_file = os.path.join(workdir, "concat.txt")
-    with open(concat_file, "w", encoding="utf-8") as f:
+    with open(os.path.join(workdir, "concat.txt"), "w", encoding="utf-8") as f:
         for name in clip_names:
             f.write(f"file '{name}'\n")
 

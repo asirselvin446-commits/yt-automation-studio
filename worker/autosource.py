@@ -23,9 +23,15 @@ import youtube
 import autosource_ai
 import autosource_voice
 import autosource_visuals
+import autosource_media
 import autosource_assemble
 
 IMAGE_STYLE = "cinematic, ultra detailed, dramatic lighting, photographic, no text, no watermark"
+
+# Video dimensions per format.
+_DIMS = {"shorts": (1080, 1920), "landscape": (1280, 720)}
+# Keep Shorts comfortably under a minute.
+_MAX_SECONDS = {"shorts": 55.0, "landscape": 180.0}
 
 
 def _today_start_iso() -> str:
@@ -39,6 +45,12 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
     voice = (cfg.get("voice") or "").strip()
     fish_key = (cfg.get("fish_api_key") or "").strip()
     fish_voice = (cfg.get("fish_voice") or "").strip()
+    pexels_key = (cfg.get("pexels_api_key") or "").strip()
+    fmt = (cfg.get("format") or "shorts").strip().lower()
+    if fmt not in _DIMS:
+        fmt = "shorts"
+    width, height = _DIMS[fmt]
+    max_seconds = _MAX_SECONDS[fmt]
 
     run_id = store.start_autosource_run(niche)
     workdir = os.path.join(config.WORK_DIR, f"autosource_{run_id}")
@@ -55,12 +67,19 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
         # Assemble the ordered spoken segments (hook first, then beats).
         segments = []
         if script.get("hook"):
-            first_prompt = script["beats"][0]["image_prompt"] if script["beats"] else niche
-            segments.append({"narration": script["hook"], "image_prompt": first_prompt})
+            first = script["beats"][0] if script["beats"] else {}
+            segments.append({
+                "narration": script["hook"],
+                "image_prompt": first.get("image_prompt", niche),
+                "visual_query": first.get("visual_query", niche),
+            })
         segments.extend(script["beats"])
 
-        # 2. Voice + image per segment.
+        # 2. Voice + visual per segment. Prefer real stock B-roll video; fall
+        #    back to a generated AI image with motion. Stop once we hit the
+        #    length cap so Shorts stay under a minute.
         beats = []
+        total = 0.0
         for i, seg in enumerate(segments):
             store.update_autosource_run(run_id, stage=f"voicing {i + 1}/{len(segments)}")
             audio_path = os.path.join(workdir, f"aud{i}.mp3")
@@ -69,29 +88,52 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
                 provider=provider, voice=voice,
                 fish_api_key=fish_key, fish_voice=fish_voice,
             )
+            dur = autosource_assemble.probe_duration(audio_path)
+            if beats and total + dur > max_seconds:
+                break  # keep it within the format's length budget
+            total += dur
 
-            store.update_autosource_run(run_id, stage=f"illustrating {i + 1}/{len(segments)}")
-            image_path = os.path.join(workdir, f"img{i}.jpg")
-            autosource_visuals.fetch_image(
-                seg["image_prompt"], image_path, seed=(hash(run_id) + i) % 100000,
-                style=IMAGE_STYLE,
-            )
-            beats.append({"image_path": image_path, "audio_path": audio_path,
-                          "text": seg["narration"]})
+            store.update_autosource_run(run_id, stage=f"sourcing footage {i + 1}/{len(segments)}")
+            beat = {"audio_path": audio_path, "text": seg["narration"]}
+            clip_path = os.path.join(workdir, f"vid{i}.mp4")
+            got = autosource_media.fetch_clip(seg.get("visual_query", niche), clip_path, pexels_key)
+            if got:
+                beat["video_path"] = got
+            else:
+                image_path = os.path.join(workdir, f"img{i}.jpg")
+                autosource_visuals.fetch_image(
+                    seg["image_prompt"], image_path,
+                    width=width, height=height,
+                    seed=(hash(run_id) + i) % 100000, style=IMAGE_STYLE,
+                )
+                beat["image_path"] = image_path
+            beats.append(beat)
 
         # 3. Assemble.
         store.update_autosource_run(run_id, stage="assembling video")
         final_path = os.path.join(workdir, "final.mp4")
-        autosource_assemble.build_video(beats, final_path, workdir)
+        autosource_assemble.build_video(beats, final_path, workdir, width=width, height=height)
 
-        # 4. Upload to YouTube.
+        # 4. Upload to YouTube. For Shorts, make sure the #Shorts signal is
+        #    present (vertical + <60s + #Shorts => classified as a Short).
+        title = script["title"]
+        description = script["description"]
+        tags = script["tags"]
+        if fmt == "shorts":
+            if "#short" not in title.lower():
+                title = f"{title[:88]} #Shorts"
+            if "#short" not in description.lower():
+                description = f"{description}\n\n#Shorts"
+            if not any("short" in t.lower() for t in tags):
+                tags = (tags + ["shorts", "youtube shorts"])[:50]
+
         stage = "scheduling upload" if publish_at else "uploading to youtube"
         store.update_autosource_run(run_id, stage=stage)
         result = youtube.upload_video(
             final_path,
-            title=script["title"],
-            description=script["description"],
-            tags=script["tags"],
+            title=title,
+            description=description,
+            tags=tags,
             privacy_status="public",
             category_id=config.UPLOAD_CATEGORY_ID,
             publish_at=publish_at,

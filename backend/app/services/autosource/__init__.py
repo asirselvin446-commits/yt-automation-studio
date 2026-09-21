@@ -24,13 +24,16 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "enabled": False,
     "niche": "amazing facts",
     "per_day": 1,
+    "format": "shorts",
     "provider": "edge",
     "voice": "en-US-AriaNeural",
     "fish_api_key": "",
     "fish_voice": "",
+    "pexels_api_key": "",
 }
 
 _ALLOWED_PROVIDERS = ("edge", "fish")
+_ALLOWED_FORMATS = ("shorts", "landscape")
 
 
 def _client() -> Optional[Client]:
@@ -55,9 +58,11 @@ def get_config() -> Dict[str, Any]:
     except Exception as e:  # table may not exist yet
         system_logger.warning(f"autosource get_config failed: {e}")
         cfg = {**_DEFAULT_CONFIG}
-    # Never expose the Fish key back to the UI — just whether one is set.
+    # Never expose secret keys back to the UI — just whether they're set.
     cfg["fish_api_key_set"] = bool(cfg.get("fish_api_key"))
+    cfg["pexels_api_key_set"] = bool(cfg.get("pexels_api_key"))
     cfg.pop("fish_api_key", None)
+    cfg.pop("pexels_api_key", None)
     cfg["configured"] = True
     return cfg
 
@@ -75,6 +80,9 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["niche"] = str(fields["niche"]).strip()[:120]
     if "per_day" in fields:
         row["per_day"] = max(1, min(8, int(fields["per_day"])))
+    if "format" in fields:
+        fmt = str(fields["format"]).strip().lower()
+        row["format"] = fmt if fmt in _ALLOWED_FORMATS else "shorts"
     if "provider" in fields:
         p = str(fields["provider"]).strip().lower()
         row["provider"] = p if p in _ALLOWED_PROVIDERS else "edge"
@@ -82,9 +90,11 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["voice"] = str(fields["voice"]).strip()[:80]
     if "fish_voice" in fields:
         row["fish_voice"] = str(fields["fish_voice"]).strip()[:120]
-    # Only overwrite the key when a non-empty value is supplied (blank keeps it).
+    # Only overwrite a key when a non-empty value is supplied (blank keeps it).
     if fields.get("fish_api_key"):
         row["fish_api_key"] = str(fields["fish_api_key"]).strip()
+    if fields.get("pexels_api_key"):
+        row["pexels_api_key"] = str(fields["pexels_api_key"]).strip()
 
     db.table("autosource_config").upsert(row).execute()
     return get_config()
