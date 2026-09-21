@@ -8,7 +8,6 @@ import {
   Tv,
   CheckCircle2,
   AlertTriangle,
-  Star,
   Link2,
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -179,13 +178,8 @@ export const Accounts: React.FC = () => {
                     <Tv className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-white truncate flex items-center gap-2">
+                    <div className="text-sm font-bold text-white truncate">
                       {a.title}
-                      {a.is_primary && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                          <Star className="w-3 h-3" /> Primary
-                        </span>
-                      )}
                     </div>
                     {a.channel_id && <p className="text-[11px] text-slate-500 font-mono truncate">{a.channel_id}</p>}
                   </div>

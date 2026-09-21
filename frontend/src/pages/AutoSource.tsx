@@ -37,7 +37,12 @@ const statusBadge = (s: string) => {
 };
 
 export const AutoSource: React.FC = () => {
-  const [cfg, setCfg] = useState<any>(null);
+  const DEFAULT_CFG = {
+    enabled: false, niche: 'amazing facts', per_day: 1, format: 'shorts',
+    account_id: '', provider: 'edge', voice: 'en-US-AriaNeural',
+    fish_voice: '', fish_api_key_set: false, pexels_api_key_set: false,
+  };
+  const [cfg, setCfg] = useState<any>(DEFAULT_CFG);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [githubReady, setGithubReady] = useState(true);
@@ -118,14 +123,6 @@ export const AutoSource: React.FC = () => {
       setGenerating(false);
     }
   };
-
-  if (!cfg) {
-    return (
-      <div className="p-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading engine…
-      </div>
-    );
-  }
 
   return (
     <div className="p-8 space-y-6 max-w-5xl mx-auto">

@@ -37,10 +37,16 @@ _ALLOWED_PROVIDERS = ("edge", "fish")
 _ALLOWED_FORMATS = ("shorts", "landscape")
 
 
+_db_client: Optional[Client] = None
+
+
 def _client() -> Optional[Client]:
+    global _db_client
     if not (settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY):
         return None
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    if _db_client is None:
+        _db_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    return _db_client
 
 
 def _now() -> str:
