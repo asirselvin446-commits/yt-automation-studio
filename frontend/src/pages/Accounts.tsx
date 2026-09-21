@@ -23,44 +23,15 @@ export const Accounts: React.FC = () => {
   const [msg, setMsg] = useState<string | null>(null);
   const poll = useRef<any>(null);
 
-  // Global upload settings (apply to all folder uploads)
+  // Aggregate queue status (across all accounts)
   const [uploadStatus, setUploadStatus] = useState<any>(null);
-  const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('public');
-  const [perDay, setPerDay] = useState(0);
-  const [publishMode, setPublishMode] = useState<'auto' | 'review'>('auto');
   const [publishingHeld, setPublishingHeld] = useState(false);
 
   const loadSettings = async () => {
     try {
       const r = await api.getSettings();
       setUploadStatus(r.upload_status);
-      setVisibility(r.visibility || 'public');
-      setPerDay(r.schedule_per_day ?? 0);
-      setPublishMode(r.publish_mode === 'review' ? 'review' : 'auto');
     } catch { /* ignore */ }
-  };
-
-  const savePublishing = async (patch: { visibility?: string; schedule_per_day?: number }) => {
-    if (patch.visibility) setVisibility(patch.visibility as any);
-    if (patch.schedule_per_day !== undefined) setPerDay(patch.schedule_per_day);
-    try {
-      await api.setPublishing(patch);
-      setMsg('Upload settings saved.');
-    } catch (e: any) {
-      setMsg(e.message);
-      loadSettings();
-    }
-  };
-
-  const changeMode = async (mode: 'auto' | 'review') => {
-    const prev = publishMode;
-    setPublishMode(mode);
-    try {
-      await api.setPublishMode(mode);
-    } catch (e: any) {
-      setPublishMode(prev);
-      setMsg(e.message);
-    }
   };
 
   const publishHeld = async () => {
@@ -151,13 +122,24 @@ export const Accounts: React.FC = () => {
     const acct = accounts.find((a) => a.id === newAccountId);
     setBusy('folder');
     try {
-      const res = await api.setFolderMapping(path, newAccountId, acct?.title);
+      const res = await api.setFolderMapping({ path, account_id: newAccountId, account_title: acct?.title });
       setFolders(res.folders || []);
       setMsg('Folder linked. Drop videos in it and they upload to that account.');
     } catch (e: any) {
       setMsg(e.message);
     } finally {
       setBusy(null);
+    }
+  };
+
+  const updateFolder = async (f: any, patch: Record<string, any>) => {
+    // Optimistic local update so the selects feel instant.
+    setFolders((prev) => prev.map((x) => (x.path === f.path ? { ...x, ...patch } : x)));
+    try {
+      await api.setFolderMapping({ path: f.path, account_id: f.account_id, account_title: f.account_title, ...patch });
+      setMsg('Folder settings saved.');
+    } catch (e: any) {
+      setMsg(e.message);
     }
   };
 
@@ -290,23 +272,64 @@ export const Accounts: React.FC = () => {
         {folders.length === 0 ? (
           <div className="p-6 text-center text-xs text-slate-500">No folders linked yet.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {folders.map((f) => (
-              <div key={f.path} className="flex items-center justify-between p-3 rounded-xl bg-[#0d0f17] border border-[#1f2434]">
-                <div className="min-w-0">
-                  <p className="text-xs text-white font-mono truncate">{f.path}</p>
-                  <p className="text-[11px] text-indigo-400 mt-0.5 flex items-center gap-1">
-                    <Tv className="w-3 h-3" /> {f.account_title || f.account_id}
-                  </p>
+              <div key={f.path} className="p-3.5 rounded-xl bg-[#0d0f17] border border-[#1f2434] space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs text-white font-mono truncate">{f.path}</p>
+                    <p className="text-[11px] text-indigo-400 mt-0.5 flex items-center gap-1">
+                      <Tv className="w-3 h-3" /> {f.account_title || f.account_id}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removeFolder(f.path)}
+                    disabled={busy === f.path}
+                    className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 hover:bg-rose-900/40 disabled:opacity-60 shrink-0"
+                    title="Unlink folder"
+                  >
+                    {busy === f.path ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeFolder(f.path)}
-                  disabled={busy === f.path}
-                  className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 hover:bg-rose-900/40 disabled:opacity-60"
-                  title="Unlink folder"
-                >
-                  {busy === f.path ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wide">Visibility</label>
+                    <select
+                      value={f.visibility || 'public'}
+                      onChange={(e) => updateFolder(f, { visibility: e.target.value })}
+                      className="mt-1 w-full bg-[#11141e] border border-[#252c42] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="public">Public</option>
+                      <option value="unlisted">Unlisted</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wide">Release</label>
+                    <select
+                      value={f.schedule_per_day ?? 0}
+                      onChange={(e) => updateFolder(f, { schedule_per_day: parseInt(e.target.value, 10) })}
+                      className="mt-1 w-full bg-[#11141e] border border-[#252c42] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value={0}>Immediately</option>
+                      <option value={1}>Drip · 1/day</option>
+                      <option value={2}>Drip · 2/day</option>
+                      <option value={3}>Drip · 3/day</option>
+                      <option value={4}>Drip · 4/day</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wide">Approval</label>
+                    <select
+                      value={f.publish_mode || 'auto'}
+                      onChange={(e) => updateFolder(f, { publish_mode: e.target.value })}
+                      className="mt-1 w-full bg-[#11141e] border border-[#252c42] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="auto">Auto-publish</option>
+                      <option value="review">Review first</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -319,77 +342,22 @@ export const Accounts: React.FC = () => {
         </div>
       </div>
 
-      {/* Global upload settings */}
-      <div className="p-6 rounded-2xl bg-[#11141e] border border-[#1f2434] space-y-4">
-        <div>
-          <h2 className="text-sm font-bold text-white">Upload settings</h2>
-          <p className="text-[11px] text-slate-500 mt-1">Apply to every video dropped in your linked folders.</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Visibility</label>
-            <select
-              value={visibility}
-              onChange={(e) => savePublishing({ visibility: e.target.value })}
-              className="w-full bg-[#0d0f17] border border-[#252c42] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="public">Public</option>
-              <option value="unlisted">Unlisted</option>
-              <option value="private">Private</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Release schedule</label>
-            <select
-              value={perDay}
-              onChange={(e) => savePublishing({ schedule_per_day: parseInt(e.target.value, 10) })}
-              className="w-full bg-[#0d0f17] border border-[#252c42] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value={0}>Publish immediately</option>
-              <option value={1}>Drip · 1 per day</option>
-              <option value={2}>Drip · 2 per day</option>
-              <option value={3}>Drip · 3 per day</option>
-              <option value={4}>Drip · 4 per day</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="text-[11px] text-slate-400 font-semibold">Approval</div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => changeMode('auto')}
-              className={`p-2.5 rounded-lg border text-left transition-colors ${
-                publishMode === 'auto' ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-[#0d0f17] border-[#252c42] hover:border-slate-600'
-              }`}
-            >
-              <div className={`text-xs font-bold ${publishMode === 'auto' ? 'text-emerald-400' : 'text-slate-300'}`}>Auto-publish</div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Uploads automatically, laptop off.</div>
-            </button>
-            <button
-              onClick={() => changeMode('review')}
-              className={`p-2.5 rounded-lg border text-left transition-colors ${
-                publishMode === 'review' ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-[#0d0f17] border-[#252c42] hover:border-slate-600'
-              }`}
-            >
-              <div className={`text-xs font-bold ${publishMode === 'review' ? 'text-indigo-400' : 'text-slate-300'}`}>Review first</div>
-              <div className="text-[10px] text-slate-500 mt-0.5">Holds new videos until you publish them.</div>
-            </button>
-          </div>
-          {publishMode === 'review' && (uploadStatus?.held ?? 0) > 0 && (
+      {/* Queue status (aggregate across accounts) */}
+      <div className="p-6 rounded-2xl bg-[#11141e] border border-[#1f2434] space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-white">Queue status</h2>
+          {(uploadStatus?.held ?? 0) > 0 && (
             <button
               onClick={publishHeld}
               disabled={publishingHeld}
-              className="w-full mt-1 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold disabled:opacity-60"
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold disabled:opacity-60"
             >
-              {publishingHeld ? 'Publishing…' : `Publish ${uploadStatus.held} held video(s) now`}
+              {publishingHeld ? 'Publishing…' : `Publish ${uploadStatus.held} held`}
             </button>
           )}
         </div>
-
         {uploadStatus && (
-          <div className="grid grid-cols-4 gap-2 text-center pt-1">
+          <div className="grid grid-cols-4 gap-2 text-center">
             {[
               ['Held', uploadStatus.held ?? 0, 'text-indigo-400'],
               ['Queued', uploadStatus.queued ?? 0, 'text-amber-400'],

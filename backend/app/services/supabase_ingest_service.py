@@ -141,7 +141,9 @@ def _cleanup_uploaded(db: Client) -> None:
         ).eq("id", item["id"]).execute()
 
 
-def _push_new(db: Client, folder: str, account_id: Optional[str] = None) -> int:
+def _push_new(db: Client, folder: str, opts: Optional[Dict[str, Any]] = None) -> int:
+    opts = opts or {}
+    account_id = opts.get("account_id")
     # Only look up a Drive token if there's actually something new to upload.
     pending = []
     for name in sorted(os.listdir(folder)):
@@ -156,21 +158,19 @@ def _push_new(db: Client, folder: str, account_id: Optional[str] = None) -> int:
     if not pending:
         return 0
 
-    # Publish mode decides the initial state:
-    #   "auto"   -> QUEUED: the cloud worker uploads it straight away.
-    #   "review" -> HELD:   it waits until you release it for publishing.
-    mode = (user_settings.get("publish_mode", "auto") or "auto").lower()
+    # Per-folder settings (each linked folder/account can differ).
+    #   publish_mode "auto" -> QUEUED (cloud uploads now); "review" -> HELD.
+    mode = str(opts.get("publish_mode", "auto") or "auto").lower()
     initial_status = "HELD" if mode == "review" else "QUEUED"
 
-    # Visibility + drip schedule.
-    visibility = (user_settings.get("visibility", "public") or "public").lower()
+    visibility = str(opts.get("visibility", "public") or "public").lower()
     if visibility not in ("public", "unlisted", "private"):
         visibility = "public"
-    per_day = int(user_settings.get("schedule_per_day", 0) or 0)
+    per_day = int(opts.get("schedule_per_day", 0) or 0)
     scheduled = per_day > 0
     interval = timedelta(hours=24.0 / per_day) if scheduled else None
-    # Chain new videos after anything already scheduled in the future.
-    cursor = _latest_future_publish_at(db) if scheduled else None
+    # Chain new videos after anything already scheduled for THIS account.
+    cursor = _latest_future_publish_at(db, account_id) if scheduled else None
 
     token = _drive_access_token(db)
     queued = 0
@@ -206,11 +206,14 @@ def _push_new(db: Client, folder: str, account_id: Optional[str] = None) -> int:
     return queued
 
 
-def _latest_future_publish_at(db: Client):
-    """The furthest-out scheduled publish time, so new videos chain after it."""
+def _latest_future_publish_at(db: Client, account_id: Optional[str] = None):
+    """The furthest-out scheduled publish time (per account), so new videos chain after it."""
     now = datetime.now(timezone.utc)
     try:
-        rows = db.table("ingest_items").select("publish_at").execute().data or []
+        q = db.table("ingest_items").select("publish_at,account_id")
+        rows = q.execute().data or []
+        if account_id:
+            rows = [r for r in rows if r.get("account_id") == account_id]
     except Exception:
         return None
     latest = None
@@ -376,10 +379,23 @@ def _folder_mappings() -> list:
         p = m.get("path")
         if p and p not in seen and os.path.isdir(p):
             seen.add(p)
-            maps.append({"path": p, "account_id": m.get("account_id")})
+            maps.append({
+                "path": p,
+                "account_id": m.get("account_id"),
+                "visibility": m.get("visibility", "public"),
+                "schedule_per_day": int(m.get("schedule_per_day", 0) or 0),
+                "publish_mode": m.get("publish_mode", "auto"),
+            })
     legacy = user_settings.get("custom_upload_folder")
     if legacy and legacy not in seen and os.path.isdir(legacy):
-        maps.append({"path": legacy, "account_id": None})
+        # Legacy single folder keeps using the old global settings.
+        maps.append({
+            "path": legacy,
+            "account_id": None,
+            "visibility": user_settings.get("visibility", "public"),
+            "schedule_per_day": int(user_settings.get("schedule_per_day", 0) or 0),
+            "publish_mode": user_settings.get("publish_mode", "auto"),
+        })
     return maps
 
 
@@ -400,7 +416,7 @@ def run_once() -> Dict[str, Any]:
         _cleanup_uploaded(db)
         pushed = 0
         for m in maps:
-            pushed += _push_new(db, m["path"], m.get("account_id"))
+            pushed += _push_new(db, m["path"], m)
         _refresh_counts(db)
         _status["last_error"] = None
         if pushed:

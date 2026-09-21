@@ -50,11 +50,14 @@ class FolderMapDTO(BaseModel):
     path: str
     account_id: str
     account_title: Optional[str] = None
+    visibility: Optional[str] = None            # public | unlisted | private
+    schedule_per_day: Optional[int] = None      # 0 = immediate, else N/day
+    publish_mode: Optional[str] = None          # auto | review
 
 
 @router.post("/folders")
 async def set_folder_mapping(payload: FolderMapDTO):
-    """Map an Auto-Upload folder to a YouTube account."""
+    """Create or update a folder→account link, with per-folder upload settings."""
     path = (payload.path or "").strip()
     if not path or not os.path.isdir(path):
         raise HTTPException(status_code=400, detail="Folder does not exist.")
@@ -62,11 +65,27 @@ async def set_folder_mapping(payload: FolderMapDTO):
         raise HTTPException(status_code=400, detail="Pick an account for this folder.")
 
     mappings: List[dict] = user_settings.get("folder_accounts", []) or []
+    existing = next((m for m in mappings if m.get("path") == path), {})
     mappings = [m for m in mappings if m.get("path") != path]  # replace existing
+
+    def _pick(new, old, default):
+        return new if new is not None else old if old is not None else default
+
+    vis = _pick(payload.visibility, existing.get("visibility"), "public")
+    if vis not in ("public", "unlisted", "private"):
+        vis = "public"
+    mode = _pick(payload.publish_mode, existing.get("publish_mode"), "auto")
+    if mode not in ("auto", "review"):
+        mode = "auto"
+    per_day = max(0, min(8, int(_pick(payload.schedule_per_day, existing.get("schedule_per_day"), 0))))
+
     mappings.append({
         "path": path,
         "account_id": payload.account_id,
-        "account_title": payload.account_title or payload.account_id,
+        "account_title": payload.account_title or existing.get("account_title") or payload.account_id,
+        "visibility": vis,
+        "schedule_per_day": per_day,
+        "publish_mode": mode,
     })
     user_settings.set_value("folder_accounts", mappings)
     # Kick an immediate scan so new files start flowing right away.

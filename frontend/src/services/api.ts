@@ -181,10 +181,17 @@ export const api = {
   accountConnectStatus: () => fetchJson<any>(`${BASE_URL}/accounts/connect-status`),
   removeAccount: (id: string) =>
     fetchJson<{ success: boolean }>(`${BASE_URL}/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  setFolderMapping: (path: string, account_id: string, account_title?: string) =>
+  setFolderMapping: (payload: {
+    path: string;
+    account_id: string;
+    account_title?: string;
+    visibility?: string;
+    schedule_per_day?: number;
+    publish_mode?: string;
+  }) =>
     fetchJson<{ success: boolean; folders: any[]; upload_status: any }>(`${BASE_URL}/accounts/folders`, {
       method: 'POST',
-      body: JSON.stringify({ path, account_id, account_title }),
+      body: JSON.stringify(payload),
     }),
   removeFolderMapping: (path: string) =>
     fetchJson<{ success: boolean; folders: any[] }>(`${BASE_URL}/accounts/folders/remove`, {
