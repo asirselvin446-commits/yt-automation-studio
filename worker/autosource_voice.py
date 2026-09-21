@@ -27,6 +27,19 @@ async def _edge_save(text: str, out_path: str, voice: str) -> None:
 
 def _synthesize_edge(text: str, out_path: str, voice: str) -> str:
     asyncio.run(_edge_save(text, out_path, voice or DEFAULT_EDGE_VOICE))
+    import os as _os
+    if not (_os.path.exists(out_path) and _os.path.getsize(out_path) > 0):
+        raise RuntimeError("edge-tts produced an empty file")
+    return out_path
+
+
+def _synthesize_gtts(text: str, out_path: str) -> str:
+    """Free, keyless fallback (Google Translate TTS). Robotic but reliable."""
+    from gtts import gTTS
+    gTTS(text=text, lang="en").save(out_path)
+    import os as _os
+    if not (_os.path.exists(out_path) and _os.path.getsize(out_path) > 0):
+        raise RuntimeError("gTTS produced an empty file")
     return out_path
 
 
@@ -59,10 +72,17 @@ def synthesize(text: str, out_path: str, *, provider: str = "edge",
     if not text:
         raise ValueError("Cannot synthesize empty text")
 
+    # Try providers in order of preference; fall through on any failure so a
+    # single flaky endpoint never fails the whole video.
     if provider == "fish" and fish_api_key:
         try:
             return _synthesize_fish(text, out_path, fish_api_key, fish_voice or None)
         except Exception as e:  # noqa: BLE001 — free tier exhausted / network / etc.
             print(f"[autosource-voice] Fish Audio failed ({e}); falling back to edge-tts", flush=True)
 
-    return _synthesize_edge(text, out_path, voice)
+    try:
+        return _synthesize_edge(text, out_path, voice)
+    except Exception as e:  # noqa: BLE001 — edge's endpoint 403s when tokens rotate
+        print(f"[autosource-voice] edge-tts failed ({e}); falling back to gTTS", flush=True)
+
+    return _synthesize_gtts(text, out_path)
