@@ -38,6 +38,7 @@ const statusBadge = (s: string) => {
 
 export const AutoSource: React.FC = () => {
   const [cfg, setCfg] = useState<any>(null);
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [githubReady, setGithubReady] = useState(true);
   const [supabaseOk, setSupabaseOk] = useState(true);
@@ -64,6 +65,7 @@ export const AutoSource: React.FC = () => {
 
   useEffect(() => {
     load();
+    api.listAccounts().then((r) => setAccounts(r.accounts || [])).catch(() => {});
     const id = setInterval(load, 4000);
     return () => clearInterval(id);
   }, []);
@@ -79,6 +81,7 @@ export const AutoSource: React.FC = () => {
         niche: cfg.niche,
         per_day: cfg.per_day,
         format: cfg.format,
+        account_id: cfg.account_id || '',
         provider: cfg.provider,
         voice: cfg.voice,
         fish_voice: cfg.fish_voice,
@@ -210,6 +213,21 @@ export const AutoSource: React.FC = () => {
               <option value="landscape">Landscape — 16:9 horizontal</option>
             </select>
             <p className="text-[11px] text-slate-500 mt-1.5">Shorts get the #Shorts tag automatically.</p>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Post to account</label>
+            <select
+              value={cfg.account_id || ''}
+              onChange={(e) => patch('account_id', e.target.value)}
+              className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+            >
+              <option value="">Primary account (default)</option>
+              {accounts.filter((a) => !a.is_primary).map((a) => (
+                <option key={a.id} value={a.id}>{a.title}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1.5">Add accounts on the Accounts page.</p>
           </div>
 
           <div>

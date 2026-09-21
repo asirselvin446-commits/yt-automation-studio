@@ -47,6 +47,7 @@ def process_item(item: dict) -> None:
             title=meta["title"], description=meta["description"], tags=meta["tags"],
             privacy_status=visibility, category_id=config.UPLOAD_CATEGORY_ID,
             publish_at=publish_at,
+            account_id=item.get("account_id"),
         )
 
         # 5. YouTube has it — delete the raw video from Drive.

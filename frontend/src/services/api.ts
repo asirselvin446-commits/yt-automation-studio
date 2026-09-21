@@ -162,6 +162,7 @@ export const api = {
     fish_api_key?: string;
     fish_voice?: string;
     pexels_api_key?: string;
+    account_id?: string;
   }) =>
     fetchJson<{ success: boolean; config: any }>(`${BASE_URL}/autosource/config`, {
       method: 'POST',
@@ -170,5 +171,24 @@ export const api = {
   generateAutosource: () =>
     fetchJson<{ started: boolean; reason: string }>(`${BASE_URL}/autosource/generate`, {
       method: 'POST',
+    }),
+
+  // Multi-account management
+  listAccounts: () =>
+    fetchJson<{ accounts: any[]; folders: any[]; connect: any }>(`${BASE_URL}/accounts`),
+  connectAccount: () =>
+    fetchJson<{ auth_url: string }>(`${BASE_URL}/accounts/connect`, { method: 'POST' }),
+  accountConnectStatus: () => fetchJson<any>(`${BASE_URL}/accounts/connect-status`),
+  removeAccount: (id: string) =>
+    fetchJson<{ success: boolean }>(`${BASE_URL}/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setFolderMapping: (path: string, account_id: string, account_title?: string) =>
+    fetchJson<{ success: boolean; folders: any[]; upload_status: any }>(`${BASE_URL}/accounts/folders`, {
+      method: 'POST',
+      body: JSON.stringify({ path, account_id, account_title }),
+    }),
+  removeFolderMapping: (path: string) =>
+    fetchJson<{ success: boolean; folders: any[] }>(`${BASE_URL}/accounts/folders/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
     }),
 };

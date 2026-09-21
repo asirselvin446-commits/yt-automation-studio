@@ -14,6 +14,16 @@ from google_auth import get_access_token
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
 
 
+def _token_for(account_id: str = None) -> str:
+    """Access token for a specific account credential (falls back to default)."""
+    if account_id and account_id not in ("google", "youtube", "default"):
+        try:
+            return get_access_token(account_id)
+        except Exception as e:
+            print(f"[youtube] account '{account_id}' token failed ({e}); using default", flush=True)
+    return get_access_token("youtube")
+
+
 def get_my_channel() -> Dict[str, Any]:
     token = get_access_token()
     resp = httpx.get(
@@ -41,13 +51,16 @@ def upload_video(
     privacy_status: str = "private",
     category_id: str = "22",
     publish_at: str = None,
+    account_id: str = None,
 ) -> Dict[str, Any]:
     """Upload one video. Returns {video_id, url} or raises on failure.
 
     If publish_at (RFC3339 UTC) is given, the video is uploaded private and
     YouTube automatically makes it PUBLIC at that time (native scheduling).
+    account_id selects which connected YouTube account to upload to (defaults to
+    the primary 'google' grant).
     """
-    token = get_access_token()
+    token = _token_for(account_id)
     file_size = os.path.getsize(file_path)
 
     status: Dict[str, Any] = {"selfDeclaredMadeForKids": False}

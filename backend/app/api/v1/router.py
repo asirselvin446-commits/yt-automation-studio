@@ -11,6 +11,7 @@ from app.api.v1.automation import router as automation_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.uploads import router as uploads_router
 from app.api.v1.autosource import router as autosource_router
+from app.api.v1.accounts import router as accounts_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -26,3 +27,4 @@ api_router.include_router(automation_router)
 api_router.include_router(settings_router)
 api_router.include_router(uploads_router)
 api_router.include_router(autosource_router)
+api_router.include_router(accounts_router)

@@ -7,6 +7,7 @@ import {
   Settings,
   Radio,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { YoutubeIcon } from '../common/YoutubeIcon';
 
@@ -22,6 +23,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ cloudIngestActive = true, chan
       items: [
         { path: '/', label: 'Uploads', icon: UploadCloud },
         { path: '/auto-source', label: 'Auto-Source', icon: Sparkles },
+        { path: '/accounts', label: 'Accounts', icon: Users },
         { path: '/ideas', label: 'Idea Lab', icon: Lightbulb },
         { path: '/channel-brain', label: 'Channel Brain', icon: BrainCircuit },
         { path: '/settings', label: 'Settings', icon: Settings },

@@ -30,6 +30,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "fish_api_key": "",
     "fish_voice": "",
     "pexels_api_key": "",
+    "account_id": "",
 }
 
 _ALLOWED_PROVIDERS = ("edge", "fish")
@@ -90,13 +91,29 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["voice"] = str(fields["voice"]).strip()[:80]
     if "fish_voice" in fields:
         row["fish_voice"] = str(fields["fish_voice"]).strip()[:120]
+    if "account_id" in fields:
+        row["account_id"] = str(fields["account_id"]).strip()[:120]
     # Only overwrite a key when a non-empty value is supplied (blank keeps it).
     if fields.get("fish_api_key"):
         row["fish_api_key"] = str(fields["fish_api_key"]).strip()
     if fields.get("pexels_api_key"):
         row["pexels_api_key"] = str(fields["pexels_api_key"]).strip()
 
-    db.table("autosource_config").upsert(row).execute()
+    try:
+        db.table("autosource_config").upsert(row).execute()
+    except Exception as e:
+        # Older tables may lack the newest columns — strip and retry so saving
+        # never hard-fails just because an ALTER hasn't been run yet.
+        msg = str(e)
+        droppable = [c for c in ("format", "pexels_api_key", "account_id") if c in msg]
+        if droppable:
+            slim = {k: v for k, v in row.items() if k not in droppable}
+            db.table("autosource_config").upsert(slim).execute()
+            system_logger.warning(
+                f"autosource_config missing columns {droppable}; run the ALTER in schema.sql."
+            )
+        else:
+            raise
     return get_config()
 
 

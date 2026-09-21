@@ -21,6 +21,7 @@ import { ChannelBrain } from './pages/ChannelBrain';
 import { Monetization } from './pages/Monetization';
 import { Automation } from './pages/Automation';
 import { AutoSource } from './pages/AutoSource';
+import { Accounts } from './pages/Accounts';
 import { Settings } from './pages/Settings';
 
 const pageTitles: Record<string, string> = {
@@ -37,6 +38,7 @@ const pageTitles: Record<string, string> = {
   '/monetization': 'Monetization Progress',
   '/automation': 'Automation Center',
   '/auto-source': 'Auto-Source Engine',
+  '/accounts': 'YouTube Accounts',
   '/settings': 'Settings',
 };
 
@@ -112,6 +114,7 @@ const AppContent: React.FC = () => {
             <Route path="/monetization" element={<Monetization />} />
             <Route path="/automation" element={<Automation />} />
             <Route path="/auto-source" element={<AutoSource />} />
+            <Route path="/accounts" element={<Accounts />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

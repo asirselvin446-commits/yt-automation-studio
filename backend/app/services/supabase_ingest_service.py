@@ -29,7 +29,7 @@ from app.core.logging import system_logger
 DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"
 
 VIDEO_EXTENSIONS = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".flv")
-_POLL_SECONDS = 30
+_POLL_SECONDS = 5  # fast detection so new drops show up almost immediately
 
 _status: Dict[str, Any] = {
     "running": False,
@@ -40,6 +40,8 @@ _status: Dict[str, Any] = {
     "uploaded": 0,
     "failed": 0,
     "held": 0,
+    "activity": "idle",       # idle | scanning | uploading
+    "activity_file": None,     # file currently being sent to the cloud
 }
 _started = False
 _lock = threading.Lock()
@@ -139,7 +141,7 @@ def _cleanup_uploaded(db: Client) -> None:
         ).eq("id", item["id"]).execute()
 
 
-def _push_new(db: Client, folder: str) -> int:
+def _push_new(db: Client, folder: str, account_id: Optional[str] = None) -> int:
     # Only look up a Drive token if there's actually something new to upload.
     pending = []
     for name in sorted(os.listdir(folder)):
@@ -175,6 +177,8 @@ def _push_new(db: Client, folder: str) -> int:
     for name, path, digest in pending:
         mime = mimetypes.guess_type(name)[0] or "video/mp4"
         system_logger.info(f"Ingest: uploading {name} to Google Drive ({initial_status})")
+        _status["activity"] = "uploading"
+        _status["activity_file"] = name
         file_id = _drive_upload(token, path, name, mime)
         row = {
             "file_name": name,
@@ -188,6 +192,8 @@ def _push_new(db: Client, folder: str) -> int:
             "created_at": _now(),
             "updated_at": _now(),
         }
+        if account_id:
+            row["account_id"] = account_id
         if scheduled:
             base = cursor if cursor else (datetime.now(timezone.utc) + timedelta(minutes=30) - interval)
             cursor = base + interval
@@ -227,12 +233,12 @@ def _insert_item(db: Client, row: Dict[str, Any]) -> None:
         db.table("ingest_items").insert(row).execute()
     except Exception as e:
         msg = str(e)
-        if "visibility" in msg or "publish_at" in msg:
-            slim = {k: v for k, v in row.items() if k not in ("visibility", "publish_at")}
+        if any(col in msg for col in ("visibility", "publish_at", "account_id")):
+            slim = {k: v for k, v in row.items() if k not in ("visibility", "publish_at", "account_id")}
             db.table("ingest_items").insert(slim).execute()
             system_logger.warning(
-                "ingest_items is missing visibility/publish_at columns — run the ALTER "
-                "in worker/db/schema.sql to enable scheduling & visibility."
+                "ingest_items is missing newer columns — run the ALTER statements in "
+                "worker/db/schema.sql to enable scheduling, visibility & multi-account."
             )
         else:
             raise
@@ -297,7 +303,14 @@ def list_items(limit: int = 100) -> Dict[str, Any]:
             "created_at": r.get("created_at"),
             "updated_at": r.get("updated_at"),
         })
-    return {"items": items, "summary": summary, "configured": True}
+    return {
+        "items": items,
+        "summary": summary,
+        "configured": True,
+        "activity": _status.get("activity", "idle"),
+        "activity_file": _status.get("activity_file"),
+        "folder": _status.get("folder"),
+    }
 
 
 def retry_item(item_id: str) -> bool:
@@ -352,26 +365,73 @@ def _refresh_counts(db: Client) -> None:
         pass
 
 
+def _folder_mappings() -> list:
+    """All folders to scan, each with the account its uploads go to.
+
+    Combines the per-account folder mappings with the legacy single folder
+    (which uploads to the default/primary account).
+    """
+    maps, seen = [], set()
+    for m in (user_settings.get("folder_accounts", []) or []):
+        p = m.get("path")
+        if p and p not in seen and os.path.isdir(p):
+            seen.add(p)
+            maps.append({"path": p, "account_id": m.get("account_id")})
+    legacy = user_settings.get("custom_upload_folder")
+    if legacy and legacy not in seen and os.path.isdir(legacy):
+        maps.append({"path": legacy, "account_id": None})
+    return maps
+
+
 def run_once() -> Dict[str, Any]:
-    """One scan+push+cleanup pass. Safe to call ad hoc (e.g. right after the user picks a folder)."""
-    folder = user_settings.get("custom_upload_folder")
-    _status["folder"] = folder
+    """One scan+push+cleanup pass across every mapped folder. Safe to call ad hoc."""
+    maps = _folder_mappings()
+    _status["folders"] = [m["path"] for m in maps]
+    _status["folder"] = maps[0]["path"] if maps else None
     _status["last_run"] = _now()
-    if not folder or not os.path.isdir(folder):
-        return _status
     db = _client()
     if db is None:
         _status["last_error"] = "Supabase not configured"
         return _status
+    if not maps:
+        return _status
     try:
+        _status["activity"] = "scanning"
         _cleanup_uploaded(db)
-        _push_new(db, folder)
+        pushed = 0
+        for m in maps:
+            pushed += _push_new(db, m["path"], m.get("account_id"))
         _refresh_counts(db)
         _status["last_error"] = None
+        if pushed:
+            # New videos are queued — kick the cloud worker now instead of
+            # waiting for its schedule, so processing starts within a minute.
+            _trigger_github()
     except Exception as e:  # noqa: BLE001
         _status["last_error"] = str(e)[:300]
         system_logger.error(f"Ingest run error: {e}")
+    finally:
+        _status["activity"] = "idle"
+        _status["activity_file"] = None
     return _status
+
+
+def _trigger_github() -> None:
+    """Fire a repository_dispatch so GitHub Actions runs the uploader immediately."""
+    token = getattr(settings, "GITHUB_TOKEN", "") or ""
+    repo = getattr(settings, "GITHUB_REPO", "") or ""
+    if not (token and repo):
+        return
+    try:
+        httpx.post(
+            f"https://api.github.com/repos/{repo}/dispatches",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            json={"event_type": "new-video"},
+            timeout=20.0,
+        )
+        system_logger.info("Ingest: pinged GitHub Actions to start the cloud upload.")
+    except Exception as e:  # noqa: BLE001
+        system_logger.warning(f"Ingest: GitHub trigger failed (cron will still run): {e}")
 
 
 def get_status() -> Dict[str, Any]:

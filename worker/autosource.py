@@ -137,6 +137,7 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
             privacy_status="public",
             category_id=config.UPLOAD_CATEGORY_ID,
             publish_at=publish_at,
+            account_id=(cfg.get("account_id") or None),
         )
 
         store.update_autosource_run(

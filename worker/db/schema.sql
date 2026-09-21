@@ -41,6 +41,7 @@ create table if not exists ingest_items (
     -- publishing controls
     visibility        text default 'public',   -- public | unlisted | private
     publish_at        timestamptz,             -- scheduled go-public time (drip)
+    account_id        text,                    -- which YouTube account to upload to (worker_credentials.id)
     -- results
     transcript        text,
     ai_metadata       jsonb,
@@ -56,6 +57,7 @@ create index if not exists ingest_items_status_idx on ingest_items (status);
 -- If you created the table before these columns existed, run once:
 --   alter table ingest_items add column if not exists visibility text default 'public';
 --   alter table ingest_items add column if not exists publish_at timestamptz;
+--   alter table ingest_items add column if not exists account_id text;
 
 -- ============================================================================
 -- Auto-source content engine
@@ -75,12 +77,14 @@ create table if not exists autosource_config (
     fish_api_key  text    default '',           -- optional Fish Audio key (nicer voice)
     fish_voice    text    default '',           -- optional Fish reference/voice id
     pexels_api_key text   default '',           -- free Pexels key for stock B-roll video
+    account_id    text    default '',           -- which YouTube account the Shorts post to
     updated_at    timestamptz not null default now()
 );
 
 -- If you created autosource_config before these columns existed, run once:
 --   alter table autosource_config add column if not exists format text not null default 'shorts';
 --   alter table autosource_config add column if not exists pexels_api_key text default '';
+--   alter table autosource_config add column if not exists account_id text default '';
 
 create table if not exists autosource_runs (
     id                text primary key default gen_random_uuid()::text,
