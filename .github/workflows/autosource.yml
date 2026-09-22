@@ -4,14 +4,12 @@ name: Auto-Source Content Engine
 # even when your laptop is off. Niche/voice/frequency come from the config the
 # desktop app saves to Supabase.
 on:
-  # Daily schedule: tops up to your configured videos-per-day. GitHub often
-  # delays/skips crons at the top of the hour, so we use an off-peak minute and
-  # add catch-up times. The worker's per-day quota guard means these only
-  # generate when today's quota isn't met yet — so they never over-post.
+  # Hourly check (off-peak minute to dodge GitHub's top-of-hour congestion).
+  # The worker only generates once it's at/after the upload time you set in the
+  # app AND today's per-day quota isn't met — so it posts around your chosen
+  # time and never over-posts. Hourly checks also self-heal skipped runs.
   schedule:
-    - cron: "37 6 * * *"    # ~11:37 IST
-    - cron: "37 10 * * *"   # catch-up if the morning run was skipped
-    - cron: "37 15 * * *"   # final catch-up for the day
+    - cron: "37 * * * *"
   # Fired by the app's "Generate one now" button.
   repository_dispatch:
     types: [autosource-now]

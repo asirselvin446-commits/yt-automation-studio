@@ -174,6 +174,20 @@ def main() -> None:
         _generate_one(cfg, publish_at=None)
         return
 
+    # Honor the user's chosen daily upload time (stored as UTC "HH:MM"): don't
+    # generate before it. The first hourly cron at/after the time posts it.
+    post_time = (cfg.get("post_time_utc") or "").strip()
+    if post_time:
+        try:
+            th, tm = (int(x) for x in post_time.split(":"))
+            now = datetime.now(timezone.utc)
+            target = now.replace(hour=th, minute=tm, second=0, microsecond=0)
+            if now < target:
+                print(f"[autosource] before scheduled time {post_time} UTC; skipping this check.", flush=True)
+                return
+        except Exception:
+            pass
+
     already = store.count_autosource_done_since(_today_start_iso())
     todo = per_day - already
     if todo <= 0:

@@ -141,6 +141,7 @@ export const api = {
     fish_voice?: string;
     pexels_api_key?: string;
     account_id?: string;
+    post_time_utc?: string;
   }) =>
     fetchJson<{ success: boolean; config: any }>(`${BASE_URL}/autosource/config`, {
       method: 'POST',

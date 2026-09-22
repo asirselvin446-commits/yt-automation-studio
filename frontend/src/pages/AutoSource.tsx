@@ -22,6 +22,22 @@ const EDGE_VOICES = [
   { id: 'en-AU-NatashaNeural', label: 'Natasha — AU female' },
 ];
 
+// Daily upload time is stored as UTC "HH:MM" but shown/edited in local time.
+const utcToLocalTime = (utc: string): string => {
+  if (!utc || !utc.includes(':')) return '';
+  const [h, m] = utc.split(':').map(Number);
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const localToUtcTime = (local: string): string => {
+  if (!local || !local.includes(':')) return '';
+  const [h, m] = local.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+};
+
 const statusBadge = (s: string) => {
   switch ((s || '').toUpperCase()) {
     case 'DONE':
@@ -41,6 +57,7 @@ export const AutoSource: React.FC = () => {
     enabled: false, niche: 'amazing facts', per_day: 1, format: 'shorts',
     account_id: '', provider: 'edge', voice: 'en-US-AriaNeural',
     fish_voice: '', fish_api_key_set: false, pexels_api_key_set: false,
+    post_time_utc: '',
   };
   const [cfg, setCfg] = useState<any>(DEFAULT_CFG);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -87,6 +104,7 @@ export const AutoSource: React.FC = () => {
         per_day: cfg.per_day,
         format: cfg.format,
         account_id: cfg.account_id || '',
+        post_time_utc: cfg.post_time_utc || '',
         provider: cfg.provider,
         voice: cfg.voice,
         fish_voice: cfg.fish_voice,
@@ -210,6 +228,21 @@ export const AutoSource: React.FC = () => {
               <option value="landscape">Landscape — 16:9 horizontal</option>
             </select>
             <p className="text-[11px] text-slate-500 mt-1.5">Shorts get the #Shorts tag automatically.</p>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Daily upload time</label>
+            <input
+              type="time"
+              value={utcToLocalTime(cfg.post_time_utc || '')}
+              onChange={(e) => patch('post_time_utc', localToUtcTime(e.target.value))}
+              className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+            />
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              {cfg.post_time_utc
+                ? 'Your local time. Posts around then (checked hourly).'
+                : 'Empty = as soon as possible each day.'}
+            </p>
           </div>
 
           <div>

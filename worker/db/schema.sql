@@ -78,6 +78,7 @@ create table if not exists autosource_config (
     fish_voice    text    default '',           -- optional Fish reference/voice id
     pexels_api_key text   default '',           -- free Pexels key for stock B-roll video
     account_id    text    default '',           -- which YouTube account the Shorts post to
+    post_time_utc text    default '',           -- daily upload time as UTC "HH:MM" ('' = as soon as possible)
     updated_at    timestamptz not null default now()
 );
 
@@ -85,6 +86,7 @@ create table if not exists autosource_config (
 --   alter table autosource_config add column if not exists format text not null default 'shorts';
 --   alter table autosource_config add column if not exists pexels_api_key text default '';
 --   alter table autosource_config add column if not exists account_id text default '';
+--   alter table autosource_config add column if not exists post_time_utc text default '';
 
 create table if not exists autosource_runs (
     id                text primary key default gen_random_uuid()::text,

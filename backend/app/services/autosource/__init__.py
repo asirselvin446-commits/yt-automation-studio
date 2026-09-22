@@ -31,6 +31,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "fish_voice": "",
     "pexels_api_key": "",
     "account_id": "",
+    "post_time_utc": "",
 }
 
 _ALLOWED_PROVIDERS = ("edge", "fish")
@@ -99,6 +100,18 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["fish_voice"] = str(fields["fish_voice"]).strip()[:120]
     if "account_id" in fields:
         row["account_id"] = str(fields["account_id"]).strip()[:120]
+    if "post_time_utc" in fields:
+        t = str(fields["post_time_utc"]).strip()
+        # Accept "" (ASAP) or a valid HH:MM (UTC); ignore anything malformed.
+        if t == "":
+            row["post_time_utc"] = ""
+        else:
+            try:
+                hh, mm = (int(x) for x in t.split(":"))
+                if 0 <= hh <= 23 and 0 <= mm <= 59:
+                    row["post_time_utc"] = f"{hh:02d}:{mm:02d}"
+            except Exception:
+                pass
     # Only overwrite a key when a non-empty value is supplied (blank keeps it).
     if fields.get("fish_api_key"):
         row["fish_api_key"] = str(fields["fish_api_key"]).strip()
@@ -111,7 +124,7 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         # Older tables may lack the newest columns — strip and retry so saving
         # never hard-fails just because an ALTER hasn't been run yet.
         msg = str(e)
-        droppable = [c for c in ("format", "pexels_api_key", "account_id") if c in msg]
+        droppable = [c for c in ("format", "pexels_api_key", "account_id", "post_time_utc") if c in msg]
         if droppable:
             slim = {k: v for k, v in row.items() if k not in droppable}
             db.table("autosource_config").upsert(slim).execute()
