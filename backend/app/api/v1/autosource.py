@@ -14,7 +14,7 @@ router = APIRouter(prefix="/autosource", tags=["Auto-Source Engine"])
 
 
 @router.get("")
-async def get_autosource_status():
+def get_autosource_status():
     return autosource.get_status()
 
 
@@ -37,12 +37,12 @@ class AutosourceConfigDTO(BaseModel):
 
 
 @router.post("/config")
-async def set_autosource_config(payload: AutosourceConfigDTO):
+def set_autosource_config(payload: AutosourceConfigDTO):
     fields = {k: v for k, v in payload.dict().items() if v is not None}
     config = autosource.set_config(fields)
     return {"success": True, "config": config}
 
 
 @router.post("/generate")
-async def generate_now():
+def generate_now():
     return autosource.generate_now()

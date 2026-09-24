@@ -21,12 +21,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     system_logger.info(f"Pipeline directories ready at: {settings.root_path}")
 
-    # Launch background sync & ingest pusher without blocking server startup
-    import asyncio
-    async def _start_cloud_services():
+    # Launch background sync & ingest pusher in a THREAD so their blocking
+    # httpx/Supabase calls never freeze the async event loop (that froze the
+    # whole app — health, saves and polls — at startup).
+    import threading
+
+    def _start_cloud_services():
         try:
+            import asyncio as _asyncio
             from app.services.supabase_sync import sync_all_from_cloud
-            await sync_all_from_cloud(force=True)
+            _asyncio.run(sync_all_from_cloud(force=True))
         except Exception as e:
             system_logger.error(f"Startup cloud sync failed: {e}")
         try:
@@ -35,7 +39,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             system_logger.error(f"Could not start Supabase ingest pusher: {e}")
 
-    asyncio.create_task(_start_cloud_services())
+    threading.Thread(target=_start_cloud_services, daemon=True, name="startup-cloud").start()
     yield
     # Shutdown
     system_logger.info("Shutting down YT Automation Studio Backend.")

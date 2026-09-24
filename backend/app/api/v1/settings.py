@@ -13,7 +13,7 @@ router = APIRouter(prefix="/settings", tags=["Studio Settings"])
 
 
 @router.get("")
-async def get_settings_status():
+def get_settings_status():
     return {
         "custom_upload_folder": user_settings.get("custom_upload_folder"),
         "publish_mode": user_settings.get("publish_mode", "auto"),
@@ -33,7 +33,7 @@ async def get_settings_status():
 
 
 @router.post("/ai")
-async def update_ai_settings(payload: AISettingsUpdateDTO):
+def update_ai_settings(payload: AISettingsUpdateDTO):
     if payload.default_provider:
         settings.DEFAULT_AI_PROVIDER = payload.default_provider
     if payload.gemini_key:
