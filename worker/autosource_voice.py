@@ -15,6 +15,7 @@ Every call returns the path to an mp3 written at out_path.
 """
 import asyncio
 import os
+import time
 from typing import Optional
 
 import httpx
@@ -33,11 +34,21 @@ async def _edge_save(text: str, out_path: str, voice: str) -> None:
     await communicate.save(out_path)
 
 
-def _synthesize_edge(text: str, out_path: str, voice: str) -> str:
-    asyncio.run(_edge_save(text, out_path, voice or DEFAULT_EDGE_VOICE))
-    if not (os.path.exists(out_path) and os.path.getsize(out_path) > 0):
-        raise RuntimeError("edge-tts produced an empty file")
-    return out_path
+def _synthesize_edge(text: str, out_path: str, voice: str, retries: int = 3) -> str:
+    """edge-tts, retried — the free endpoint intermittently returns 'No audio
+    received' from shared cloud IPs, which usually clears on a retry."""
+    v = voice or DEFAULT_EDGE_VOICE
+    last = None
+    for attempt in range(retries):
+        try:
+            asyncio.run(_edge_save(text, out_path, v))
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                return out_path
+            last = "empty file"
+        except Exception as e:  # noqa: BLE001
+            last = e
+        time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"edge-tts failed after {retries} attempts: {last}")
 
 
 def _synthesize_gtts(text: str, out_path: str) -> str:
