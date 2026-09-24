@@ -102,7 +102,13 @@ if frontend_dist.exists() and (frontend_dist / "index.html").exists():
                 return FileResponse(candidate)
         except (OSError, ValueError):
             pass
-        return FileResponse(root / "index.html")
+        # index.html must never be cached, or the desktop app keeps loading a
+        # stale page after a redeploy (it references old, hashed asset files).
+        # The hashed /assets files are immutable, so they can cache freely.
+        return FileResponse(
+            root / "index.html",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
 else:
     @app.get("/")
     async def root():
