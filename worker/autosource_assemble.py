@@ -12,6 +12,8 @@ import subprocess
 import textwrap
 from typing import Any, Dict, List
 
+import httpx
+
 FPS = 30
 
 _FONT_CANDIDATES = [
@@ -124,8 +126,71 @@ def _build_clip(workdir: str, beat: Dict[str, Any], duration: float,
     return rc == 0
 
 
+def _download_music(url: str, workdir: str) -> str | None:
+    """Download a royalty-free music track to workdir. Returns path or None."""
+    try:
+        dst = os.path.join(workdir, "music_src.mp3")
+        with httpx.stream("GET", url, timeout=60.0, follow_redirects=True) as r:
+            if r.status_code != 200:
+                return None
+            with open(dst, "wb") as f:
+                for chunk in r.iter_bytes(chunk_size=256 * 1024):
+                    f.write(chunk)
+        return dst if os.path.getsize(dst) > 4096 else None
+    except Exception as e:  # noqa: BLE001
+        print(f"[autosource-assemble] music download failed: {e}", flush=True)
+        return None
+
+
+def mix_music(video_in: str, out_path: str, workdir: str, music_url: str = "") -> str:
+    """Mix a soft background-music bed under the narration and write out_path.
+
+    Uses the given royalty-free track (looped) if a URL is supplied and downloads;
+    otherwise generates an original ambient pad (zero copyright/Content-ID risk).
+    Music sits low under the voice with gentle fade in/out. Falls back to the
+    original video (no music) if the mix fails, so a run never breaks on music.
+    """
+    dur = probe_duration(video_in)
+    fade_out_start = max(0.0, dur - 2.0)
+    vin = os.path.relpath(video_in, workdir)
+    out_abs = os.path.abspath(out_path)
+
+    track = _download_music(music_url, workdir) if music_url else None
+
+    if track:
+        # Loop the supplied track to cover the video, keep it well under the voice.
+        cmd = [
+            "ffmpeg", "-y", "-i", vin, "-stream_loop", "-1", "-i", os.path.relpath(track, workdir),
+            "-filter_complex",
+            f"[1:a]volume=0.14,afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out_start:.2f}:d=2[m];"
+            f"[0:a][m]amix=inputs=2:duration=first:dropout_transition=0,dynaudnorm=f=250[a]",
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest", out_abs,
+        ]
+    else:
+        # Original generated ambient pad — a calm major chord with slow movement.
+        pad = ("aevalsrc="
+               "'0.6*sin(2*PI*130.81*t)+0.5*sin(2*PI*196.00*t)+0.4*sin(2*PI*261.63*t)'"
+               f":s=44100:d={dur:.2f}")
+        cmd = [
+            "ffmpeg", "-y", "-i", vin, "-f", "lavfi", "-t", f"{dur:.2f}", "-i", pad,
+            "-filter_complex",
+            f"[1:a]lowpass=f=1300,tremolo=f=0.12:d=0.5,aecho=0.8:0.85:110:0.3,"
+            f"volume=0.10,afade=t=in:st=0:d=2,afade=t=out:st={fade_out_start:.2f}:d=2[m];"
+            f"[0:a][m]amix=inputs=2:duration=first:dropout_transition=0,dynaudnorm=f=250[a]",
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest", out_abs,
+        ]
+    rc, err = _run(cmd, workdir)
+    if rc != 0:
+        print(f"[autosource-assemble] music mix failed ({err[-300:]}); using video without music", flush=True)
+        shutil.copyfile(video_in, out_abs)
+    return out_path
+
+
 def build_video(beats: List[Dict[str, Any]], out_path: str, workdir: str,
-                width: int = 1080, height: int = 1920) -> str:
+                width: int = 1080, height: int = 1920,
+                music: bool = True, music_url: str = "") -> str:
     """beats: [{audio_path, text, video_path? , image_path?}] -> out_path mp4."""
     os.makedirs(workdir, exist_ok=True)
     font = _prepare_font(workdir)
@@ -146,12 +211,19 @@ def build_video(beats: List[Dict[str, Any]], out_path: str, workdir: str,
         for name in clip_names:
             f.write(f"file '{name}'\n")
 
+    # Concatenate the clips (voiceover only) first.
+    voiced = "voiced.mp4"
     rc, err = _run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "concat.txt",
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-r", str(FPS),
-        os.path.abspath(out_path),
+        voiced,
     ], workdir)
     if rc != 0:
         raise RuntimeError(f"Concat failed: {err[-600:]}")
+
+    voiced_abs = os.path.join(workdir, voiced)
+    if music:
+        return mix_music(voiced_abs, out_path, workdir, music_url)
+    shutil.move(voiced_abs, os.path.abspath(out_path))
     return out_path

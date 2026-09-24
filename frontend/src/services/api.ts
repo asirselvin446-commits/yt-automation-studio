@@ -144,6 +144,8 @@ export const api = {
     pexels_api_key?: string;
     account_id?: string;
     post_time_utc?: string;
+    music_enabled?: boolean;
+    music_url?: string;
   }) =>
     fetchJson<{ success: boolean; config: any }>(`${BASE_URL}/autosource/config`, {
       method: 'POST',

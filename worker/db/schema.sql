@@ -81,6 +81,8 @@ create table if not exists autosource_config (
     pexels_api_key text   default '',           -- free Pexels key for stock B-roll video
     account_id    text    default '',           -- which YouTube account the Shorts post to
     post_time_utc text    default '',           -- daily upload time as UTC "HH:MM" ('' = as soon as possible)
+    music_enabled boolean not null default true, -- add a background music bed
+    music_url     text    default '',           -- optional royalty-free track URL ('' = generated ambient pad)
     updated_at    timestamptz not null default now()
 );
 
@@ -91,6 +93,8 @@ create table if not exists autosource_config (
 --   alter table autosource_config add column if not exists post_time_utc text default '';
 --   alter table autosource_config add column if not exists eleven_api_key text default '';
 --   alter table autosource_config add column if not exists eleven_voice text default '';
+--   alter table autosource_config add column if not exists music_enabled boolean not null default true;
+--   alter table autosource_config add column if not exists music_url text default '';
 
 create table if not exists autosource_runs (
     id                text primary key default gen_random_uuid()::text,

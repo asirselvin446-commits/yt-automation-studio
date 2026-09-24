@@ -61,7 +61,7 @@ export const AutoSource: React.FC = () => {
     account_id: '', provider: 'edge', voice: 'en-US-AvaMultilingualNeural',
     fish_voice: '', fish_api_key_set: false, pexels_api_key_set: false,
     eleven_voice: '', eleven_api_key_set: false,
-    post_time_utc: '',
+    post_time_utc: '', music_enabled: true, music_url: '',
   };
   const [cfg, setCfg] = useState<any>(DEFAULT_CFG);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -109,6 +109,8 @@ export const AutoSource: React.FC = () => {
         format: cfg.format,
         account_id: cfg.account_id || '',
         post_time_utc: cfg.post_time_utc || '',
+        music_enabled: cfg.music_enabled !== false,
+        music_url: cfg.music_url || '',
         provider: cfg.provider,
         voice: cfg.voice,
         fish_voice: cfg.fish_voice,
@@ -373,6 +375,41 @@ export const AutoSource: React.FC = () => {
             <a href="https://www.pexels.com/api/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">pexels.com/api</a>.
             With a key, each line uses real licensed video footage. Without one, it falls back to AI images.
           </p>
+        </div>
+
+        {/* Background music */}
+        <div className="p-4 rounded-xl bg-[#0d0f17] border border-[#1f2434] space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Background music</div>
+              <p className="text-[11px] text-slate-500 mt-0.5">A soft bed under the narration so videos don't feel empty.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => patch('music_enabled', !(cfg.music_enabled !== false))}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                cfg.music_enabled !== false
+                  ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-700/20 text-slate-300 border-slate-600/40'
+              }`}
+            >
+              {cfg.music_enabled !== false ? 'On' : 'Off'}
+            </button>
+          </div>
+          {cfg.music_enabled !== false && (
+            <div>
+              <input
+                value={cfg.music_url || ''}
+                onChange={(e) => patch('music_url', e.target.value)}
+                placeholder="Optional: paste a royalty-free track URL (.mp3)"
+                className="w-full px-3 py-2.5 rounded-lg bg-[#11141e] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+              />
+              <p className="text-[11px] text-slate-500 mt-1.5">
+                Leave blank for an original generated ambient pad (zero copyright risk). Or paste a direct .mp3
+                link from a no-copyright library (e.g. <a href="https://pixabay.com/music/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Pixabay Music</a>).
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 pt-1">

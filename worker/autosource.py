@@ -48,6 +48,8 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
     eleven_key = (cfg.get("eleven_api_key") or "").strip()
     eleven_voice = (cfg.get("eleven_voice") or "").strip()
     pexels_key = (cfg.get("pexels_api_key") or "").strip()
+    music_enabled = cfg.get("music_enabled", True)
+    music_url = (cfg.get("music_url") or "").strip()
     fmt = (cfg.get("format") or "shorts").strip().lower()
     if fmt not in _DIMS:
         fmt = "shorts"
@@ -115,7 +117,10 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
         # 3. Assemble.
         store.update_autosource_run(run_id, stage="assembling video")
         final_path = os.path.join(workdir, "final.mp4")
-        autosource_assemble.build_video(beats, final_path, workdir, width=width, height=height)
+        autosource_assemble.build_video(
+            beats, final_path, workdir, width=width, height=height,
+            music=bool(music_enabled), music_url=music_url,
+        )
 
         # 4. Upload to YouTube. For Shorts, make sure the #Shorts signal is
         #    present (vertical + <60s + #Shorts => classified as a Short).

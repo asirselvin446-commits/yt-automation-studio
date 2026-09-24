@@ -32,6 +32,8 @@ class AutosourceConfigDTO(BaseModel):
     pexels_api_key: Optional[str] = None      # optional; blank keeps existing
     account_id: Optional[str] = None          # which YouTube account to post to
     post_time_utc: Optional[str] = None       # daily upload time as UTC "HH:MM" ('' = ASAP)
+    music_enabled: Optional[bool] = None      # add a background music bed
+    music_url: Optional[str] = None           # optional royalty-free track URL
 
 
 @router.post("/config")

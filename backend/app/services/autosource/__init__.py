@@ -34,6 +34,8 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "pexels_api_key": "",
     "account_id": "",
     "post_time_utc": "",
+    "music_enabled": True,
+    "music_url": "",
 }
 
 _ALLOWED_PROVIDERS = ("edge", "fish", "elevenlabs")
@@ -106,6 +108,10 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["eleven_voice"] = str(fields["eleven_voice"]).strip()[:120]
     if "account_id" in fields:
         row["account_id"] = str(fields["account_id"]).strip()[:120]
+    if "music_enabled" in fields:
+        row["music_enabled"] = bool(fields["music_enabled"])
+    if "music_url" in fields:
+        row["music_url"] = str(fields["music_url"]).strip()[:500]
     if "post_time_utc" in fields:
         t = str(fields["post_time_utc"]).strip()
         # Accept "" (ASAP) or a valid HH:MM (UTC); ignore anything malformed.
@@ -133,7 +139,7 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         # never hard-fails just because an ALTER hasn't been run yet.
         msg = str(e)
         droppable = [c for c in ("format", "pexels_api_key", "account_id", "post_time_utc",
-                                 "eleven_api_key", "eleven_voice") if c in msg]
+                                 "eleven_api_key", "eleven_voice", "music_enabled", "music_url") if c in msg]
         if droppable:
             slim = {k: v for k, v in row.items() if k not in droppable}
             db.table("autosource_config").upsert(slim).execute()
