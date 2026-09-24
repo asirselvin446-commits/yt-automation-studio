@@ -139,6 +139,8 @@ export const api = {
     voice?: string;
     fish_api_key?: string;
     fish_voice?: string;
+    eleven_api_key?: string;
+    eleven_voice?: string;
     pexels_api_key?: string;
     account_id?: string;
     post_time_utc?: string;

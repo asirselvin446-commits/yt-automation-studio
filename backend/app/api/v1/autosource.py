@@ -27,6 +27,8 @@ class AutosourceConfigDTO(BaseModel):
     voice: Optional[str] = None               # edge-tts voice id
     fish_api_key: Optional[str] = None        # optional; blank keeps existing
     fish_voice: Optional[str] = None
+    eleven_api_key: Optional[str] = None      # optional; blank keeps existing
+    eleven_voice: Optional[str] = None
     pexels_api_key: Optional[str] = None      # optional; blank keeps existing
     account_id: Optional[str] = None          # which YouTube account to post to
     post_time_utc: Optional[str] = None       # daily upload time as UTC "HH:MM" ('' = ASAP)

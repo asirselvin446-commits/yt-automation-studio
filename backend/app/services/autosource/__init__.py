@@ -29,12 +29,14 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "voice": "en-US-AriaNeural",
     "fish_api_key": "",
     "fish_voice": "",
+    "eleven_api_key": "",
+    "eleven_voice": "",
     "pexels_api_key": "",
     "account_id": "",
     "post_time_utc": "",
 }
 
-_ALLOWED_PROVIDERS = ("edge", "fish")
+_ALLOWED_PROVIDERS = ("edge", "fish", "elevenlabs")
 _ALLOWED_FORMATS = ("shorts", "landscape")
 
 
@@ -68,8 +70,10 @@ def get_config() -> Dict[str, Any]:
         cfg = {**_DEFAULT_CONFIG}
     # Never expose secret keys back to the UI — just whether they're set.
     cfg["fish_api_key_set"] = bool(cfg.get("fish_api_key"))
+    cfg["eleven_api_key_set"] = bool(cfg.get("eleven_api_key"))
     cfg["pexels_api_key_set"] = bool(cfg.get("pexels_api_key"))
     cfg.pop("fish_api_key", None)
+    cfg.pop("eleven_api_key", None)
     cfg.pop("pexels_api_key", None)
     cfg["configured"] = True
     return cfg
@@ -98,6 +102,8 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         row["voice"] = str(fields["voice"]).strip()[:80]
     if "fish_voice" in fields:
         row["fish_voice"] = str(fields["fish_voice"]).strip()[:120]
+    if "eleven_voice" in fields:
+        row["eleven_voice"] = str(fields["eleven_voice"]).strip()[:120]
     if "account_id" in fields:
         row["account_id"] = str(fields["account_id"]).strip()[:120]
     if "post_time_utc" in fields:
@@ -115,6 +121,8 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
     # Only overwrite a key when a non-empty value is supplied (blank keeps it).
     if fields.get("fish_api_key"):
         row["fish_api_key"] = str(fields["fish_api_key"]).strip()
+    if fields.get("eleven_api_key"):
+        row["eleven_api_key"] = str(fields["eleven_api_key"]).strip()
     if fields.get("pexels_api_key"):
         row["pexels_api_key"] = str(fields["pexels_api_key"]).strip()
 
@@ -124,7 +132,8 @@ def set_config(fields: Dict[str, Any]) -> Dict[str, Any]:
         # Older tables may lack the newest columns — strip and retry so saving
         # never hard-fails just because an ALTER hasn't been run yet.
         msg = str(e)
-        droppable = [c for c in ("format", "pexels_api_key", "account_id", "post_time_utc") if c in msg]
+        droppable = [c for c in ("format", "pexels_api_key", "account_id", "post_time_utc",
+                                 "eleven_api_key", "eleven_voice") if c in msg]
         if droppable:
             slim = {k: v for k, v in row.items() if k not in droppable}
             db.table("autosource_config").upsert(slim).execute()

@@ -14,12 +14,15 @@ import {
 import { api } from '../services/api';
 
 const EDGE_VOICES = [
-  { id: 'en-US-AriaNeural', label: 'Aria — US female (warm)' },
-  { id: 'en-US-GuyNeural', label: 'Guy — US male (clear)' },
+  { id: 'en-US-AvaMultilingualNeural', label: 'Ava — US female (natural, conversational) ★' },
+  { id: 'en-US-AndrewMultilingualNeural', label: 'Andrew — US male (natural, warm) ★' },
+  { id: 'en-US-EmmaMultilingualNeural', label: 'Emma — US female (natural) ★' },
+  { id: 'en-US-BrianMultilingualNeural', label: 'Brian — US male (natural) ★' },
   { id: 'en-US-JennyNeural', label: 'Jenny — US female (friendly)' },
+  { id: 'en-US-GuyNeural', label: 'Guy — US male (clear)' },
+  { id: 'en-US-AriaNeural', label: 'Aria — US female' },
   { id: 'en-GB-RyanNeural', label: 'Ryan — UK male' },
   { id: 'en-GB-SoniaNeural', label: 'Sonia — UK female' },
-  { id: 'en-AU-NatashaNeural', label: 'Natasha — AU female' },
 ];
 
 // Daily upload time is stored as UTC "HH:MM" but shown/edited in local time.
@@ -55,8 +58,9 @@ const statusBadge = (s: string) => {
 export const AutoSource: React.FC = () => {
   const DEFAULT_CFG = {
     enabled: false, niche: 'amazing facts', per_day: 1, format: 'shorts',
-    account_id: '', provider: 'edge', voice: 'en-US-AriaNeural',
+    account_id: '', provider: 'edge', voice: 'en-US-AvaMultilingualNeural',
     fish_voice: '', fish_api_key_set: false, pexels_api_key_set: false,
+    eleven_voice: '', eleven_api_key_set: false,
     post_time_utc: '',
   };
   const [cfg, setCfg] = useState<any>(DEFAULT_CFG);
@@ -108,12 +112,14 @@ export const AutoSource: React.FC = () => {
         provider: cfg.provider,
         voice: cfg.voice,
         fish_voice: cfg.fish_voice,
+        eleven_voice: cfg.eleven_voice,
         ...(cfg._fishKey ? { fish_api_key: cfg._fishKey } : {}),
+        ...(cfg._elevenKey ? { eleven_api_key: cfg._elevenKey } : {}),
         ...(cfg._pexelsKey ? { pexels_api_key: cfg._pexelsKey } : {}),
         ...overrides,
       };
       const res = await api.setAutosourceConfig(payload);
-      setCfg({ ...res.config, _fishKey: '', _pexelsKey: '' });
+      setCfg({ ...res.config, _fishKey: '', _pexelsKey: '', _elevenKey: '' });
       setMsg('Saved.');
     } catch (e: any) {
       setMsg(e.message);
@@ -271,12 +277,18 @@ export const AutoSource: React.FC = () => {
               onChange={(e) => patch('provider', e.target.value)}
               className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
             >
-              <option value="edge">edge-tts — free & unlimited</option>
-              <option value="fish">Fish Audio — nicer (falls back to free)</option>
+              <option value="edge">edge-tts — free, natural (recommended)</option>
+              <option value="elevenlabs">ElevenLabs — most human (free key, falls back)</option>
+              <option value="fish">Fish Audio — human (free key, falls back)</option>
             </select>
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              {cfg.provider === 'edge'
+                ? 'The ★ voices are the most human-sounding.'
+                : 'If the key/credits fail, it auto-falls back to free edge-tts.'}
+            </p>
           </div>
 
-          {cfg.provider === 'edge' ? (
+          {cfg.provider === 'edge' && (
             <div>
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Narration voice</label>
               <select
@@ -289,7 +301,35 @@ export const AutoSource: React.FC = () => {
                 ))}
               </select>
             </div>
-          ) : (
+          )}
+
+          {cfg.provider === 'elevenlabs' && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  ElevenLabs API key {cfg.eleven_api_key_set && <span className="text-emerald-400">✓ saved</span>}
+                </label>
+                <input
+                  type="password"
+                  value={cfg._elevenKey || ''}
+                  onChange={(e) => patch('_elevenKey', e.target.value)}
+                  placeholder={cfg.eleven_api_key_set ? '•••••• (leave blank to keep)' : 'paste your free ElevenLabs key'}
+                  className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Voice id (optional)</label>
+                <input
+                  value={cfg.eleven_voice || ''}
+                  onChange={(e) => patch('eleven_voice', e.target.value)}
+                  placeholder="blank = Rachel (default)"
+                  className="mt-1.5 w-full px-3 py-2.5 rounded-lg bg-[#0d0f17] border border-[#252c42] text-sm text-white focus:border-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {cfg.provider === 'fish' && (
             <div className="space-y-3">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">

@@ -45,6 +45,8 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
     voice = (cfg.get("voice") or "").strip()
     fish_key = (cfg.get("fish_api_key") or "").strip()
     fish_voice = (cfg.get("fish_voice") or "").strip()
+    eleven_key = (cfg.get("eleven_api_key") or "").strip()
+    eleven_voice = (cfg.get("eleven_voice") or "").strip()
     pexels_key = (cfg.get("pexels_api_key") or "").strip()
     fmt = (cfg.get("format") or "shorts").strip().lower()
     if fmt not in _DIMS:
@@ -87,6 +89,7 @@ def _generate_one(cfg: dict, publish_at: str | None) -> None:
                 seg["narration"], audio_path,
                 provider=provider, voice=voice,
                 fish_api_key=fish_key, fish_voice=fish_voice,
+                eleven_api_key=eleven_key, eleven_voice=eleven_voice,
             )
             dur = autosource_assemble.probe_duration(audio_path)
             if beats and total + dur > max_seconds:

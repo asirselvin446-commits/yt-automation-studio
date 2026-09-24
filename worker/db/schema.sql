@@ -76,6 +76,8 @@ create table if not exists autosource_config (
     voice         text    default '',           -- edge-tts voice, e.g. en-US-AriaNeural
     fish_api_key  text    default '',           -- optional Fish Audio key (nicer voice)
     fish_voice    text    default '',           -- optional Fish reference/voice id
+    eleven_api_key text   default '',           -- optional ElevenLabs key (most human voice)
+    eleven_voice  text    default '',           -- optional ElevenLabs voice id
     pexels_api_key text   default '',           -- free Pexels key for stock B-roll video
     account_id    text    default '',           -- which YouTube account the Shorts post to
     post_time_utc text    default '',           -- daily upload time as UTC "HH:MM" ('' = as soon as possible)
@@ -87,6 +89,8 @@ create table if not exists autosource_config (
 --   alter table autosource_config add column if not exists pexels_api_key text default '';
 --   alter table autosource_config add column if not exists account_id text default '';
 --   alter table autosource_config add column if not exists post_time_utc text default '';
+--   alter table autosource_config add column if not exists eleven_api_key text default '';
+--   alter table autosource_config add column if not exists eleven_voice text default '';
 
 create table if not exists autosource_runs (
     id                text primary key default gen_random_uuid()::text,
